@@ -1,0 +1,510 @@
+---
+title: Development commands
+description: Commands for development workflows and testing
+---
+
+Development commands help you with testing, debugging, and development workflows.
+
+## Testing
+
+### Run tests
+
+Run Python unit tests for your Frappe application.
+
+```bash
+bench --site [sitename] run-tests
+```
+
+**Options:**
+- `--app` - Run tests for specific app
+- `--doctype` - Run tests for specific DocType
+- `--module` - Run tests in a module
+- `--module-def` - Run tests for all DocTypes in a Module
+- `--test` - Run specific test (can be used multiple times)
+- `--case` - Select particular TestCase
+- `--doctype-list-path` - Path to .txt file with list of DocTypes
+- `--profile` - Profile test execution
+- `--coverage` - Generate coverage report
+- `--failfast` - Stop on first error or failure
+- `--skip-before-tests` - Skip before_tests hook
+- `--junit-xml-output` - Path for JUnit XML report
+- `--test-category` - Test category: `unit`, `integration`, or `all` (default: `all`)
+- `--lightmode` - Skip full test environment setup
+- `--debug` - Attach to pdb on breakpoint or exception
+
+**Examples:**
+```bash
+# Run all tests
+$ bench --site mysite.local run-tests
+
+# Run tests for specific app
+$ bench --site mysite.local run-tests --app erpnext
+
+# Run tests for specific DocType
+$ bench --site mysite.local run-tests --doctype "Sales Order"
+
+# Run specific test method
+$ bench --site mysite.local run-tests \
+  --test "frappe.tests.test_api.TestAPI.test_get_api"
+
+# Run with coverage
+$ bench --site mysite.local run-tests --app frappe --coverage
+
+# Debug mode
+$ bench --site mysite.local run-tests --debug --doctype "Sales Order"
+```
+
+### Run parallel tests
+
+Run tests in parallel for faster execution.
+
+```bash
+bench --site [sitename] run-parallel-tests
+```
+
+**Options:**
+- `--app` - App to test (default: `frappe`)
+- `--build-number` - Build number for splitting tests (default: 1)
+- `--total-builds` - Total number of builds (default: 1)
+- `--with-coverage` - Generate coverage report
+- `--use-orchestrator` - Use orchestrator for test distribution
+- `--dry-run` - Show tests without running them
+- `--lightmode` - Skip full test setup
+- `--failfast` - Exit on first failure
+
+**Example:**
+```bash
+# Run tests across 4 parallel workers
+$ bench --site mysite.local run-parallel-tests \
+  --app erpnext \
+  --total-builds 4 \
+  --build-number 1
+```
+
+### Run UI tests
+
+Run Cypress UI tests.
+
+```bash
+bench --site [sitename] run-ui-tests [app]
+```
+
+**Options:**
+- `--headless` - Run in headless mode
+- `--parallel` - Run tests in parallel
+- `--with-coverage` - Generate coverage report
+- `--browser` - Browser to use (default: `chrome`)
+- `--spec` - Specific spec file to run
+- `--ci-build-id` - CI build ID for parallel runs
+
+**Examples:**
+```bash
+# Run UI tests in headed mode
+$ bench --site mysite.local run-ui-tests frappe
+
+# Run in headless mode
+$ bench --site mysite.local run-ui-tests frappe --headless
+
+# Run specific spec
+$ bench --site mysite.local run-ui-tests frappe \
+  --headless --spec "cypress/integration/test_login.js"
+```
+
+## Scheduler and background jobs
+
+### Enable scheduler
+
+Enable the background job scheduler.
+
+```bash
+bench --site [sitename] enable-scheduler
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local enable-scheduler
+Enabled for mysite.local
+```
+
+### Disable scheduler
+
+Disable the background job scheduler.
+
+```bash
+bench --site [sitename] disable-scheduler
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local disable-scheduler
+Disabled for mysite.local
+```
+
+### Scheduler control
+
+Control scheduler state with more options.
+
+```bash
+bench --site [sitename] scheduler [state]
+```
+
+**States:**
+- `enable` - Enable the scheduler
+- `disable` - Disable the scheduler
+- `pause` - Pause the scheduler temporarily
+- `resume` - Resume paused scheduler
+- `status` - Check scheduler status
+
+**Options:**
+- `--format, -f` - Output format: `json` or `text` (default: `text`)
+- `--verbose, -v` - Verbose output
+
+**Examples:**
+```bash
+# Check status
+$ bench --site mysite.local scheduler status
+Scheduler is enabled for site mysite.local
+
+# Pause scheduler
+$ bench --site mysite.local scheduler pause
+
+# Resume scheduler
+$ bench --site mysite.local scheduler resume
+```
+
+### Trigger scheduler event
+
+Manually trigger a specific scheduler event.
+
+```bash
+bench --site [sitename] trigger-scheduler-event [event]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local trigger-scheduler-event \
+  "frappe.email.queue.flush"
+```
+
+### Start scheduler process
+
+Start the scheduler background process.
+
+```bash
+bench schedule
+```
+
+This starts the main scheduler process that enqueues scheduled jobs.
+
+### Start worker
+
+Start a background worker process.
+
+```bash
+bench worker
+```
+
+**Options:**
+- `--queue` - Specific queue(s) to consume (comma-separated)
+- `--quiet` - Hide log outputs
+- `-u, --rq-username` - Redis ACL username
+- `-p, --rq-password` - Redis ACL password
+- `--burst` - Run in burst mode (exit when queue is empty)
+- `--strategy` - Dequeuing strategy: `round_robin` or `random`
+
+**Examples:**
+```bash
+# Start worker for all queues
+$ bench worker
+
+# Start worker for specific queues
+$ bench worker --queue short,long
+
+# Burst mode (for testing)
+$ bench worker --burst
+```
+
+### Start worker pool
+
+Start a pool of background workers.
+
+```bash
+bench worker-pool
+```
+
+**Options:**
+- `--queue` - Queue(s) to consume
+- `--num-workers` - Number of workers to spawn (default: 2)
+- `--quiet` - Hide log outputs
+- `--burst` - Run in burst mode
+
+**Example:**
+```bash
+$ bench worker-pool --num-workers 4
+```
+
+### Show pending jobs
+
+View pending background jobs.
+
+```bash
+bench --site [sitename] show-pending-jobs
+```
+
+**Example output:**
+```bash
+$ bench --site mysite.local show-pending-jobs
+default: 5 jobs
+short: 2 jobs
+long: 0 jobs
+```
+
+### Purge jobs
+
+Purge pending background jobs.
+
+```bash
+bench purge-jobs
+```
+
+**Options:**
+- `--site` - Site name
+- `--queue` - Specific queue: `low`, `default`, or `high`
+- `--event` - Specific event: `all`, `weekly`, `monthly`, `hourly`, `daily`, `weekly_long`, `daily_long`
+
+**Example:**
+```bash
+# Purge all jobs for a site
+$ bench purge-jobs --site mysite.local
+
+# Purge specific queue
+$ bench purge-jobs --site mysite.local --queue default
+
+# Purge specific event
+$ bench purge-jobs --site mysite.local --event daily
+```
+
+### Doctor
+
+Get diagnostic information about background workers and jobs.
+
+```bash
+bench doctor
+```
+
+**Options:**
+- `--site` - Site name
+
+**Example output:**
+```bash
+$ bench doctor --site mysite.local
+Background workers status:
+✓ Scheduler: Running
+✓ Workers: 3 active
+
+Redis status:
+✓ Cache: Connected
+✓ Queue: Connected
+```
+
+### Ready for migration
+
+Check if a site is ready for migration (no pending jobs).
+
+```bash
+bench --site [sitename] ready-for-migration
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local ready-for-migration
+READY for migration: site mysite.local does not have any background jobs
+```
+
+## Maintenance mode
+
+Put a site in or out of maintenance mode.
+
+```bash
+bench --site [sitename] set-maintenance-mode [state]
+```
+
+**States:**
+- `on` - Enable maintenance mode
+- `off` - Disable maintenance mode
+
+**Example:**
+```bash
+# Enable maintenance mode
+$ bench --site mysite.local set-maintenance-mode on
+
+# Disable maintenance mode
+$ bench --site mysite.local set-maintenance-mode off
+```
+
+When maintenance mode is enabled, users will see a maintenance page.
+
+## Permissions and search
+
+### Reset permissions
+
+Reset permissions for all DocTypes.
+
+```bash
+bench --site [sitename] reset-perms
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local reset-perms
+```
+
+### Rebuild global search
+
+Rebuild the global search index.
+
+```bash
+bench --site [sitename] rebuild-global-search
+```
+
+**Options:**
+- `--static-pages` - Rebuild for static pages instead of DocTypes
+
+**Example:**
+```bash
+# Rebuild for all DocTypes
+$ bench --site mysite.local rebuild-global-search
+
+# Rebuild for static pages
+$ bench --site mysite.local rebuild-global-search --static-pages
+```
+
+### Build search index
+
+Rebuild website search index.
+
+```bash
+bench --site [sitename] build-search-index
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local build-search-index
+Building search index for mysite.local
+```
+
+## Translation commands
+
+### Build message files
+
+Build translation message files.
+
+```bash
+bench --site [sitename] build-message-files
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local build-message-files
+```
+
+### New language
+
+Create a new language translation file.
+
+```bash
+bench --site [sitename] new-language [lang_code] [app]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local new-language es custom_app
+File created at ./apps/custom_app/custom_app/translations/es.csv
+```
+
+### Get untranslated strings
+
+Extract untranslated strings for a language.
+
+```bash
+bench --site [sitename] get-untranslated [lang] [output_file]
+```
+
+**Options:**
+- `--app` - Specific app (default: all apps)
+- `--all` - Get all message strings
+
+**Example:**
+```bash
+$ bench --site mysite.local get-untranslated es /tmp/untranslated_es.csv
+```
+
+### Update translations
+
+Update translation files with translated strings.
+
+```bash
+bench --site [sitename] update-translations [lang] [untranslated_file] [translated_file]
+```
+
+**Options:**
+- `--app` - Specific app (default: all apps)
+
+**Example:**
+```bash
+$ bench --site mysite.local update-translations es \
+  /tmp/untranslated.csv /tmp/translated.csv
+```
+
+### Import translations
+
+Import translations from a file.
+
+```bash
+bench --site [sitename] import-translations [lang] [path]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local import-translations es /tmp/translations.csv
+```
+
+### Migrate translations
+
+Migrate translations from one app to another.
+
+```bash
+bench --site [sitename] migrate-translations [source_app] [target_app]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local migrate-translations frappe custom_app
+```
+
+## Email queue
+
+Add emails to the email queue for sending.
+
+```bash
+bench --site [sitename] add-to-email-queue [email_path]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local add-to-email-queue /tmp/emails/
+```
+
+## Desktop icons
+
+Sync desktop icons from app fixtures.
+
+```bash
+bench --site [sitename] sync-desktop-icons
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local sync-desktop-icons
+Syncing icons for mysite.local
+```

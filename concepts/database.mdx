@@ -1,0 +1,603 @@
+---
+title: Database abstraction
+description: Database layer, query builder, and ORM in Frappe Framework
+---
+
+Frappe provides a powerful database abstraction layer that works across MariaDB, PostgreSQL, and SQLite. It includes both raw SQL execution and a query builder for type-safe database operations.
+
+## Database connection
+
+The database connection is available globally as `frappe.db`:
+
+```python
+import frappe
+
+# Database is automatically connected for each request
+db = frappe.db
+
+print(db.db_type)  # 'mariadb', 'postgres', or 'sqlite'
+print(db.cur_db_name)  # Current database name
+```
+
+## Basic queries
+
+### Executing SQL
+
+```python
+# Execute SQL query
+results = frappe.db.sql("""
+    SELECT name, customer_name, grand_total
+    FROM `tabSales Order`
+    WHERE status = 'Open'
+    ORDER BY creation DESC
+""")
+
+print(results)  # Returns list of tuples
+# [('SO-0001', 'Customer A', 15000.0), ('SO-0002', 'Customer B', 25000.0)]
+```
+
+### Query options
+
+```python
+# Return as dictionary
+orders = frappe.db.sql("""
+    SELECT name, customer_name, grand_total
+    FROM `tabSales Order`
+    WHERE status = %s
+""", ('Open',), as_dict=True)
+
+for order in orders:
+    print(order.name, order.customer_name, order.grand_total)
+
+# Return as list
+orders = frappe.db.sql(
+    "SELECT * FROM `tabSales Order` WHERE status = %s",
+    ('Open',),
+    as_list=True
+)
+
+# Pluck single column
+customer_names = frappe.db.sql_list("""
+    SELECT DISTINCT customer_name
+    FROM `tabSales Order`
+""")
+# Or using pluck parameter
+customer_names = frappe.db.sql("""
+    SELECT DISTINCT customer_name FROM `tabSales Order`
+""", pluck=True)
+
+print(customer_names)  # ['Customer A', 'Customer B', 'Customer C']
+```
+
+### Parameter binding
+
+Always use parameter binding to prevent SQL injection:
+
+```python
+# Tuple parameters
+orders = frappe.db.sql("""
+    SELECT name, grand_total
+    FROM `tabSales Order`
+    WHERE customer = %s AND status = %s
+""", ('CUST-001', 'Open'), as_dict=True)
+
+# Dictionary parameters
+orders = frappe.db.sql("""
+    SELECT name, grand_total
+    FROM `tabSales Order`
+    WHERE customer = %(customer)s AND status = %(status)s
+""", {'customer': 'CUST-001', 'status': 'Open'}, as_dict=True)
+```
+
+<Warning>
+Never use string formatting or concatenation for SQL queries as it creates SQL injection vulnerabilities:
+```python
+# BAD - SQL Injection risk!
+query = f"SELECT * FROM `tabUser` WHERE name = '{user_input}'"
+
+# GOOD - Safe parameter binding
+query = "SELECT * FROM `tabUser` WHERE name = %s"
+results = frappe.db.sql(query, (user_input,))
+```
+</Warning>
+
+## High-level query methods
+
+### get_value
+
+Get a single field value:
+
+```python
+# Get single field
+customer_name = frappe.db.get_value('Customer', 'CUST-001', 'customer_name')
+
+# Get multiple fields
+values = frappe.db.get_value('Customer', 'CUST-001', 
+    ['customer_name', 'territory', 'customer_group'],
+    as_dict=True
+)
+print(values.customer_name, values.territory)
+
+# With filters
+user_email = frappe.db.get_value('User', 
+    {'first_name': 'John', 'enabled': 1}, 
+    'email'
+)
+
+# Get from Single DocType
+allow_signup = frappe.db.get_single_value('Website Settings', 'allow_signup')
+```
+
+### get_all
+
+Get multiple documents:
+
+```python
+# Get all with filters
+orders = frappe.db.get_all('Sales Order',
+    filters={'status': 'Open', 'customer': 'CUST-001'},
+    fields=['name', 'grand_total', 'delivery_date'],
+    order_by='creation desc',
+    limit=10
+)
+
+# With multiple filter conditions
+orders = frappe.db.get_all('Sales Order',
+    filters=[
+        ['status', '=', 'Open'],
+        ['grand_total', '>', 10000],
+        ['delivery_date', '<=', frappe.utils.today()]
+    ],
+    fields=['*']
+)
+
+# With OR filters
+orders = frappe.db.get_all('Sales Order',
+    filters={
+        'status': ['in', ['Open', 'Pending']],
+        'customer': 'CUST-001'
+    }
+)
+
+# Pluck single field
+order_names = frappe.db.get_all('Sales Order',
+    filters={'status': 'Open'},
+    pluck='name'
+)
+print(order_names)  # ['SO-0001', 'SO-0002', 'SO-0003']
+```
+
+### get_list
+
+Similar to get_all but applies permissions:
+
+```python
+# Only returns documents user has access to
+orders = frappe.db.get_list('Sales Order',
+    filters={'status': 'Open'},
+    fields=['name', 'customer', 'grand_total'],
+    limit_page_length=20
+)
+```
+
+### exists
+
+Check if document exists:
+
+```python
+# Check by name
+if frappe.db.exists('Customer', 'CUST-001'):
+    print('Customer exists')
+
+# Check with filters
+if frappe.db.exists('Sales Order', {'customer': 'CUST-001', 'status': 'Open'}):
+    print('Customer has open orders')
+
+# Returns name if exists, None otherwise
+order_name = frappe.db.exists('Sales Order', {'customer': 'CUST-001'})
+```
+
+### count
+
+Count documents:
+
+```python
+# Count all
+total_customers = frappe.db.count('Customer')
+
+# Count with filters
+active_customers = frappe.db.count('Customer', {'disabled': 0})
+
+# Count with complex filters
+orders = frappe.db.count('Sales Order', [
+    ['status', '=', 'Open'],
+    ['grand_total', '>', 10000]
+])
+```
+
+## Query Builder
+
+Frappe uses PyPika for type-safe query building:
+
+```python
+from frappe.query_builder import DocType
+
+# Define table
+SalesOrder = DocType('Sales Order')
+Customer = DocType('Customer')
+
+# Build query
+query = (
+    frappe.qb.from_(SalesOrder)
+    .select(SalesOrder.name, SalesOrder.grand_total)
+    .where(SalesOrder.status == 'Open')
+    .where(SalesOrder.grand_total > 10000)
+    .orderby(SalesOrder.creation, order='desc')
+    .limit(10)
+)
+
+# Execute
+orders = query.run(as_dict=True)
+```
+
+### Query Builder examples
+
+<Tabs>
+  <Tab title="Select">
+    ```python
+    from frappe.query_builder import DocType
+    
+    Item = DocType('Item')
+    
+    # Select specific fields
+    query = (
+        frappe.qb.from_(Item)
+        .select(Item.name, Item.item_name, Item.standard_rate)
+        .where(Item.disabled == 0)
+    )
+    items = query.run(as_dict=True)
+    
+    # Select all fields
+    query = frappe.qb.from_(Item).select('*')
+    ```
+  </Tab>
+  <Tab title="Join">
+    ```python
+    SalesOrder = DocType('Sales Order')
+    Customer = DocType('Customer')
+    
+    query = (
+        frappe.qb.from_(SalesOrder)
+        .join(Customer)
+        .on(SalesOrder.customer == Customer.name)
+        .select(
+            SalesOrder.name,
+            SalesOrder.grand_total,
+            Customer.customer_name,
+            Customer.territory
+        )
+        .where(SalesOrder.status == 'Open')
+    )
+    results = query.run(as_dict=True)
+    ```
+  </Tab>
+  <Tab title="Aggregation">
+    ```python
+    from frappe.query_builder.functions import Sum, Count, Avg
+    
+    SalesOrder = DocType('Sales Order')
+    
+    query = (
+        frappe.qb.from_(SalesOrder)
+        .select(
+            SalesOrder.customer,
+            Count('*').as_('order_count'),
+            Sum(SalesOrder.grand_total).as_('total_amount'),
+            Avg(SalesOrder.grand_total).as_('avg_amount')
+        )
+        .where(SalesOrder.status == 'Open')
+        .groupby(SalesOrder.customer)
+    )
+    stats = query.run(as_dict=True)
+    ```
+  </Tab>
+  <Tab title="Update/Delete">
+    ```python
+    ToDo = DocType('ToDo')
+    
+    # Update
+    query = (
+        frappe.qb.update(ToDo)
+        .set(ToDo.status, 'Closed')
+        .where(ToDo.allocated_to == frappe.session.user)
+        .where(ToDo.status == 'Open')
+    )
+    query.run()
+    
+    # Delete
+    query = (
+        frappe.qb.delete()
+        .from_(ToDo)
+        .where(ToDo.status == 'Cancelled')
+    )
+    query.run()
+    ```
+  </Tab>
+</Tabs>
+
+## Writing data
+
+### set_value
+
+Update field values directly:
+
+```python
+# Update single field
+frappe.db.set_value('Customer', 'CUST-001', 'disabled', 1)
+
+# Update multiple fields
+frappe.db.set_value('Customer', 'CUST-001', {
+    'customer_name': 'Updated Name',
+    'territory': 'New Territory'
+})
+
+# Update with filter
+frappe.db.set_value('Sales Order', 
+    {'status': 'Draft', 'customer': 'CUST-001'}, 
+    'status', 
+    'Cancelled'
+)
+
+# Update Single DocType
+frappe.db.set_single_value('System Settings', 'country', 'India')
+```
+
+<Note>
+`set_value` bypasses document validation and controller methods. Use document `save()` for full validation.
+</Note>
+
+### insert
+
+Direct database insert (rarely needed):
+
+```python
+# Insert using document (preferred)
+doc = frappe.get_doc({
+    'doctype': 'Customer',
+    'customer_name': 'New Customer'
+})
+doc.insert()
+
+# Direct insert (not recommended)
+frappe.db.sql("""
+    INSERT INTO `tabCustomer` (name, customer_name, creation, modified)
+    VALUES (%s, %s, NOW(), NOW())
+""", ('CUST-NEW', 'New Customer'))
+```
+
+## Transactions
+
+### Commit and Rollback
+
+```python
+# Commit transaction
+frappe.db.commit()
+
+# Rollback transaction
+frappe.db.rollback()
+
+# Auto-commit on many writes
+frappe.db.auto_commit_on_many_writes = 1
+```
+
+<Warning>
+Frappe automatically manages transactions. Manual commit/rollback should be used carefully:
+- Request handlers auto-commit on success
+- Background jobs auto-commit
+- Explicit rollback discards all changes in current transaction
+</Warning>
+
+### Savepoints
+
+```python
+# Create savepoint
+frappe.db.savepoint('before_update')
+
+try:
+    # Some operations
+    update_documents()
+except Exception:
+    # Rollback to savepoint
+    frappe.db.rollback(save_point='before_update')
+```
+
+## Caching
+
+### Value cache
+
+Frappe caches `get_value` results:
+
+```python
+# First call hits database
+value = frappe.db.get_value('Customer', 'CUST-001', 'customer_name')
+
+# Subsequent calls use cache
+value = frappe.db.get_value('Customer', 'CUST-001', 'customer_name')
+
+# Clear cache
+frappe.db.value_cache = {}
+
+# Or clear for specific doctype
+frappe.clear_cache(doctype='Customer')
+```
+
+## Database utilities
+
+### Table operations
+
+```python
+# Check if table exists
+if frappe.db.table_exists('tabCustomer'):
+    print('Table exists')
+
+# Get table columns
+columns = frappe.db.get_table_columns('Customer')
+print(columns)  # ['name', 'customer_name', 'territory', ...]
+
+# Truncate table (use with caution!)
+frappe.db.truncate('Activity Log')
+```
+
+### Database information
+
+```python
+# Get database size
+size = frappe.db.get_database_size()
+print(f"Database size: {size} MB")
+
+# Estimate document count (fast)
+count = frappe.db.estimate_count('Customer')
+
+# Describe table
+desc = frappe.db.sql("DESCRIBE `tabCustomer`", as_dict=True)
+```
+
+## Database-specific features
+
+### MariaDB/MySQL
+
+```python
+# Full-text search
+frappe.db.sql("""
+    SELECT name, item_name
+    FROM `tabItem`
+    WHERE MATCH(item_name, description) AGAINST (%s IN NATURAL LANGUAGE MODE)
+""", (search_term,), as_dict=True)
+
+# JSON field operations (MariaDB 10.2+)
+frappe.db.sql("""
+    SELECT name, JSON_EXTRACT(custom_data, '$.field_name') as value
+    FROM `tabCustom DocType`
+""")
+```
+
+### PostgreSQL
+
+```python
+# Array operations
+frappe.db.sql("""
+    SELECT name
+    FROM "tabDocType"
+    WHERE 'field_name' = ANY(string_to_array(fields, ','))
+""")
+
+# JSONB queries
+frappe.db.sql("""
+    SELECT name, data->>'key' as value
+    FROM "tabCustom DocType"
+    WHERE data @> '{"status": "active"}'
+""")
+```
+
+## Performance tips
+
+<AccordionGroup>
+  <Accordion title="Use appropriate query methods">
+    - Use `get_value` for single field from single document
+    - Use `get_all` for multiple documents
+    - Use `exists` instead of `get_value` when only checking existence
+    
+    ```python
+    # Slow
+    doc = frappe.get_doc('Customer', 'CUST-001')
+    name = doc.customer_name
+    
+    # Fast
+    name = frappe.db.get_value('Customer', 'CUST-001', 'customer_name')
+    ```
+  </Accordion>
+
+  <Accordion title="Batch operations">
+    Process multiple records in batches:
+    
+    ```python
+    # Get IDs first
+    names = frappe.db.get_all('Customer', 
+        filters={'disabled': 0},
+        pluck='name',
+        limit=1000
+    )
+    
+    # Process in batches
+    batch_size = 100
+    for i in range(0, len(names), batch_size):
+        batch = names[i:i+batch_size]
+        process_batch(batch)
+        frappe.db.commit()
+    ```
+  </Accordion>
+
+  <Accordion title="Minimize queries in loops">
+    ```python
+    # Bad: N+1 query problem
+    orders = frappe.get_all('Sales Order', fields=['name', 'customer'])
+    for order in orders:
+        customer_name = frappe.db.get_value('Customer', order.customer, 'customer_name')
+    
+    # Good: Single join
+    SalesOrder = DocType('Sales Order')
+    Customer = DocType('Customer')
+    
+    query = (
+        frappe.qb.from_(SalesOrder)
+        .join(Customer).on(SalesOrder.customer == Customer.name)
+        .select(SalesOrder.name, Customer.customer_name)
+    )
+    orders = query.run(as_dict=True)
+    ```
+  </Accordion>
+
+  <Accordion title="Use indexes">
+    Add database indexes for frequently queried fields:
+    
+    ```python
+    # In DocType field definition
+    {
+        'fieldname': 'status',
+        'fieldtype': 'Select',
+        'search_index': 1  # Creates database index
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Use ORM when possible">
+    Prefer `frappe.get_doc()` over raw SQL for document operations - it handles permissions, validation, and hooks.
+  </Card>
+  <Card title="Parameter binding">
+    Always use parameterized queries to prevent SQL injection attacks.
+  </Card>
+  <Card title="Transaction safety">
+    Be cautious with manual commits. Let Frappe manage transactions automatically in most cases.
+  </Card>
+  <Card title="Cache awareness">
+    Clear caches when updating data directly with SQL to avoid stale cache issues.
+  </Card>
+</CardGroup>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Document class" icon="file" href="./document">
+    Learn about the Document ORM
+  </Card>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Understand DocType metadata
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Database queries respect permissions
+  </Card>
+</CardGroup>

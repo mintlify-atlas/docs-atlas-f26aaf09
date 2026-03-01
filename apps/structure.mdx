@@ -1,0 +1,233 @@
+---
+title: App directory structure
+description: Understanding the organization of Frappe apps
+---
+
+Frappe apps follow a standardized directory structure that organizes code, templates, and assets.
+
+## Root directory
+
+The root directory contains package configuration and metadata:
+
+```
+my_app/
+├── pyproject.toml           # Python package configuration
+├── license.txt              # License text
+├── README.md                # Documentation
+├── .gitignore               # Git ignore patterns
+├── .pre-commit-config.yaml  # Pre-commit hooks
+├── .editorconfig            # Editor configuration
+└── .eslintrc                # JavaScript linting rules
+```
+
+### pyproject.toml
+
+Defines the Python package, dependencies, and build configuration:
+
+```toml
+[project]
+name = "my_app"
+authors = [
+    { name = "Publisher Name", email = "email@example.com"}
+]
+description = "App description"
+requires-python = ">=3.14"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    # "frappe~=16.0.0" # Installed and managed by bench
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+```
+
+## App package directory
+
+The main application code lives in `my_app/my_app/`:
+
+```
+my_app/my_app/
+├── __init__.py              # Package initialization with version
+├── hooks.py                 # App configuration and hooks
+├── patches.txt              # Database migration patches
+├── modules.txt              # List of modules
+├── config/                  # Configuration files
+├── public/                  # Static assets
+├── templates/               # Jinja templates
+├── www/                     # Web pages
+└── [module_name]/          # Module directories
+```
+
+### Core files
+
+#### `__init__.py`
+
+Defines the app version:
+
+```python
+__version__ = "0.0.1"
+```
+
+#### `hooks.py`
+
+Configures the app and defines hooks. See [hooks reference](/apps/hooks-reference) for details.
+
+```python
+app_name = "my_app"
+app_title = "My App"
+app_publisher = "Publisher Name"
+app_description = "Description"
+app_email = "email@example.com"
+app_license = "mit"
+
+# Hooks
+doc_events = {
+    "*": {
+        "on_update": "my_app.utils.on_update"
+    }
+}
+```
+
+#### `patches.txt`
+
+Lists database migration patches in execution order:
+
+```
+[pre_model_sync]
+# Patches executed before doctypes are migrated
+
+[post_model_sync]
+# Patches executed after doctypes are migrated
+my_app.patches.v1_0.update_customer_status
+```
+
+#### `modules.txt`
+
+Lists modules in the app (one per line):
+
+```
+Accounts
+Sales
+Inventory
+```
+
+## Module directories
+
+Each module contains DocTypes and other resources:
+
+```
+my_app/accounts/
+├── __init__.py
+├── doctype/
+│   ├── invoice/
+│   │   ├── __init__.py
+│   │   ├── invoice.py          # Controller class
+│   │   ├── invoice.json        # DocType definition
+│   │   ├── invoice.js          # Client-side logic
+│   │   ├── invoice_list.js     # List view customization
+│   │   ├── test_invoice.py     # Unit tests
+│   │   └── patches/           # DocType-specific patches
+│   └── ...
+├── page/                       # Custom pages
+├── report/                     # Reports
+└── web_form/                   # Web forms
+```
+
+## Public directory
+
+Static assets accessible via HTTP:
+
+```
+my_app/public/
+├── .gitkeep
+├── js/
+│   └── my_app.js              # Global JavaScript
+├── css/
+│   └── my_app.css             # Global CSS
+└── images/
+    └── logo.png
+```
+
+Assets are served at `/assets/my_app/`.
+
+## Templates directory
+
+Jinja templates for web pages and emails:
+
+```
+my_app/templates/
+├── __init__.py
+├── pages/                      # Page templates
+│   └── custom_page.html
+├── includes/                   # Reusable template fragments
+│   └── header.html
+└── emails/                     # Email templates
+    └── notification.html
+```
+
+## WWW directory
+
+Web pages served directly:
+
+```
+my_app/www/
+├── about.html                  # Served at /about
+├── about.py                    # Python controller
+└── contact/
+    ├── index.html              # Served at /contact
+    └── index.py
+```
+
+## Config directory
+
+Desk configuration:
+
+```
+my_app/config/
+├── __init__.py
+├── desktop.py                  # Desktop icons
+├── docs.py                     # Help articles
+└── my_app.py                   # Module configuration
+```
+
+### Example: desktop.py
+
+```python
+from frappe import _
+
+def get_data():
+    return [
+        {
+            "module_name": "Accounts",
+            "category": "Modules",
+            "label": _("Accounts"),
+            "color": "#3498db",
+            "icon": "octicon octicon-file-directory",
+            "type": "module"
+        }
+    ]
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use modules to organize functionality">
+    Group related DocTypes, reports, and pages in modules (e.g., Accounts, Sales, HR).
+  </Accordion>
+
+  <Accordion title="Keep public assets organized">
+    Use subdirectories in `public/` for different asset types (js, css, images, icons).
+  </Accordion>
+
+  <Accordion title="Follow naming conventions">
+    - Use snake_case for app and module names
+    - Use PascalCase for DocType names
+    - Use snake_case for Python files and functions
+  </Accordion>
+
+  <Accordion title="Document your code">
+    Add docstrings to Python functions and comments to JavaScript code.
+  </Accordion>
+</AccordionGroup>

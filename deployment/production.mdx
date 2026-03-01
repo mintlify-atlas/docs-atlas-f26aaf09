@@ -1,0 +1,177 @@
+---
+title: 'Production deployment'
+description: 'Deploy Frappe Framework in production environments'
+---
+
+## Overview
+
+Frappe can be deployed in production using various methods, from fully managed hosting to self-hosted solutions. Choose the approach that best fits your infrastructure and operational requirements.
+
+## Managed hosting
+
+### Frappe Cloud
+
+[Frappe Cloud](https://frappecloud.com) is a fully managed hosting platform specifically designed for Frappe applications. It's an open-source platform that handles all operational aspects of your deployment.
+
+**Features:**
+- Automated installation and setup
+- Zero-downtime upgrades
+- Built-in monitoring and maintenance
+- Developer platform with deployment controls
+- Manage multiple Frappe deployments from one interface
+
+<Tip>
+Frappe Cloud is ideal if you want to focus on building applications rather than managing infrastructure.
+</Tip>
+
+## Self-hosted deployment
+
+### Prerequisites
+
+Before deploying Frappe in production, ensure you have:
+
+- **Python 3.14** (or compatible version)
+- **MariaDB** or **PostgreSQL** database server
+- **Redis** for caching and job queuing
+- **Node.js 20** for asset building
+- **nginx** as reverse proxy
+- **supervisor** for process management
+
+### Production server setup
+
+For production deployments, Frappe requires several components running together:
+
+#### Web server (gunicorn)
+
+Frappe uses gunicorn as the WSGI HTTP server. Configure multiple workers based on your server resources:
+
+```bash
+gunicorn frappe.app:application \
+  --bind 127.0.0.1:8000 \
+  --workers 4 \
+  --timeout 120
+```
+
+#### Background workers
+
+Frappe uses RQ (Redis Queue) for background job processing. Start workers for different queue types:
+
+```bash
+# Default queue worker
+bench worker --queue default
+
+# Short running jobs
+bench worker --queue short
+
+# Long running jobs
+bench worker --queue long
+```
+
+<Note>
+Customize worker counts and timeouts in `common_site_config.json` using the `workers` configuration.
+</Note>
+
+#### Scheduler
+
+The scheduler runs periodic tasks defined in your applications:
+
+```bash
+bench schedule
+```
+
+#### nginx reverse proxy
+
+Configure nginx to proxy requests to gunicorn and serve static files. Bench can generate nginx configuration:
+
+```bash
+bench setup nginx
+sudo ln -s `pwd`/config/nginx.conf /etc/nginx/sites-enabled/frappe
+sudo systemctl reload nginx
+```
+
+### Process management
+
+Use supervisor to manage Frappe processes and ensure they restart automatically:
+
+```bash
+bench setup supervisor
+sudo ln -s `pwd`/config/supervisor.conf /etc/supervisor/conf.d/frappe.conf
+sudo supervisorctl reread
+sudo supervisorctl update
+```
+
+### Security considerations
+
+<Warning>
+Always follow these security best practices in production:
+</Warning>
+
+- **HTTPS only**: Configure SSL certificates for all sites
+- **Database security**: Use strong passwords and limit network access
+- **File permissions**: Ensure proper ownership and permissions on site directories
+- **Firewall**: Restrict access to database and Redis ports
+- **Regular updates**: Keep Frappe and dependencies up to date
+
+### Environment variables
+
+Frappe supports environment variables for configuration overrides:
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `FRAPPE_DB_HOST` | Database host | `127.0.0.1` |
+| `FRAPPE_DB_PORT` | Database port | `3306` (MariaDB) |
+| `FRAPPE_DB_NAME` | Database name | - |
+| `FRAPPE_DB_USER` | Database user | - |
+| `FRAPPE_DB_PASSWORD` | Database password | - |
+| `FRAPPE_REDIS_CACHE` | Redis cache URL | `redis://127.0.0.1:13311` |
+| `FRAPPE_REDIS_QUEUE` | Redis queue URL | `redis://127.0.0.1:11311` |
+
+## Performance optimization
+
+### Worker configuration
+
+Optimize worker counts based on your workload. Add to `common_site_config.json`:
+
+```json
+{
+  "workers": {
+    "short": {"timeout": 300},
+    "default": {"timeout": 300},
+    "long": {"timeout": 1500}
+  }
+}
+```
+
+### Restart supervisor on update
+
+Automatically restart processes when code is updated:
+
+```json
+{
+  "restart_supervisor_on_update": true
+}
+```
+
+## Monitoring
+
+Monitor your production deployment health:
+
+```bash
+# Check background workers
+bench doctor
+
+# View system health report
+bench execute frappe.core.doctype.system_health_report.system_health_report.get_report
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Docker deployment" icon="docker" href="/deployment/docker">
+  Deploy using containerized environments
+</Card>
+
+<Card title="Configuration options" icon="gear" href="/deployment/configuration">
+  Explore all configuration settings
+</Card>
+</CardGroup>

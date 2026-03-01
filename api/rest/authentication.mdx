@@ -1,0 +1,307 @@
+---
+title: API authentication
+---
+
+Frappe Framework supports multiple authentication methods for API requests. Choose the method that best fits your use case.
+
+## Authentication methods
+
+### API key and secret
+
+The recommended method for programmatic access. API keys are generated per user and provide secure authentication without exposing passwords.
+
+#### Generating API keys
+
+API keys can be generated from the User form or programmatically:
+
+**From the UI:**
+1. Navigate to User list
+2. Open the user for which you want to generate keys
+3. Click on "API Access" section
+4. Click "Generate Keys"
+
+**Programmatically:**
+
+```python
+import frappe
+
+@frappe.whitelist()
+def generate_keys(user: str):
+    """
+    Generate API key and API secret for a user.
+    Requires System Manager role.
+    """
+    frappe.only_for("System Manager")
+    user_details = frappe.get_doc("User", user)
+    api_secret = frappe.generate_hash(length=15)
+    
+    # Generate API key if not set
+    if not user_details.api_key:
+        api_key = frappe.generate_hash(length=15)
+        user_details.api_key = api_key
+    
+    user_details.api_secret = api_secret
+    user_details.save()
+    
+    return {
+        "api_key": user_details.api_key,
+        "api_secret": api_secret
+    }
+```
+
+#### Using API keys
+
+API keys can be sent using two authentication schemes:
+
+**Basic authentication:**
+
+```bash
+curl -X GET \
+  -H "Authorization: Basic $(echo -n 'api_key:api_secret' | base64)" \
+  https://your-site.com/api/v2/document/Task
+```
+
+**Token authentication:**
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/document/Task
+```
+
+Example with actual keys:
+
+```bash
+# Using Basic auth
+curl -X GET \
+  -H "Authorization: Basic $(echo -n 'a1b2c3d4e5f6g7h:x9y8z7w6v5u4t3s' | base64)" \
+  https://your-site.com/api/v2/document/Task
+
+# Using Token auth (simpler)
+curl -X GET \
+  -H "Authorization: token a1b2c3d4e5f6g7h:x9y8z7w6v5u4t3s" \
+  https://your-site.com/api/v2/document/Task
+```
+
+#### Custom authorization source
+
+You can authenticate using API keys from DocTypes other than User by specifying the `Frappe-Authorization-Source` header:
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Frappe-Authorization-Source: Custom DocType" \
+  https://your-site.com/api/v2/document/Task
+```
+
+The custom DocType must have:
+- `api_key` field (Data)
+- `api_secret` field (Password)
+- `user` field (Link to User)
+- `enabled` field (Check)
+
+### OAuth 2.0
+
+Frappe supports OAuth 2.0 for third-party application access using Bearer tokens.
+
+#### Using OAuth tokens
+
+```bash
+curl -X GET \
+  -H "Authorization: Bearer <oauth_token>" \
+  https://your-site.com/api/v2/document/Task
+```
+
+The OAuth implementation:
+- Validates bearer tokens against the OAuth Bearer Token DocType
+- Checks required scopes for the endpoint
+- Sets the user from the token's associated user
+
+Scopes are delimited by URL delimiters and stored in the OAuth Bearer Token document.
+
+### Session-based authentication
+
+For web applications, you can use session cookies after logging in:
+
+#### Login endpoint
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"usr":"user@example.com","pwd":"password"}' \
+  -c cookies.txt \
+  https://your-site.com/api/method/login
+```
+
+#### Using the session
+
+```bash
+curl -X GET \
+  -b cookies.txt \
+  https://your-site.com/api/v2/document/Task
+```
+
+#### Logout endpoint
+
+```bash
+curl -X POST \
+  -b cookies.txt \
+  https://your-site.com/api/v2/method/logout
+```
+
+### Custom authentication hooks
+
+Implement custom authentication logic using the `auth_hooks` hook in your app:
+
+**hooks.py:**
+
+```python
+auth_hooks = [
+    "myapp.auth.custom_auth_handler"
+]
+```
+
+**myapp/auth.py:**
+
+```python
+import frappe
+
+def custom_auth_handler():
+    """
+    Custom authentication handler.
+    Set frappe.session.user to authenticate the request.
+    """
+    custom_header = frappe.get_request_header("X-Custom-Auth")
+    
+    if custom_header:
+        # Your custom logic to validate and extract user
+        user = validate_custom_token(custom_header)
+        if user:
+            frappe.set_user(user)
+
+def validate_custom_token(token):
+    # Your token validation logic
+    pass
+```
+
+## CSRF tokens
+
+For session-based authentication, CSRF tokens are required for unsafe HTTP methods (POST, PUT, DELETE, PATCH).
+
+### Getting the CSRF token
+
+The CSRF token is available in the session data after login:
+
+```javascript
+frappe.csrf_token
+```
+
+### Sending the CSRF token
+
+Include the token in one of these ways:
+
+**As a header:**
+
+```bash
+curl -X POST \
+  -H "X-Frappe-CSRF-Token: your-csrf-token" \
+  -b cookies.txt \
+  https://your-site.com/api/v2/document/Task
+```
+
+**As a form parameter:**
+
+```bash
+curl -X POST \
+  -d "csrf_token=your-csrf-token" \
+  -b cookies.txt \
+  https://your-site.com/api/v2/document/Task
+```
+
+### Bypassing CSRF
+
+CSRF validation is skipped when:
+- Using API key/secret authentication
+- Using OAuth bearer tokens
+- `ignore_csrf` is set in site configuration
+- Request comes from an allowed referrer (configured in `allowed_referrers`)
+
+## Security best practices
+
+<AccordionGroup>
+  <Accordion title="Protect your API keys">
+    - Never commit API keys to version control
+    - Store keys in environment variables or secure vaults
+    - Rotate keys regularly
+    - Use separate keys for different environments
+  </Accordion>
+  
+  <Accordion title="Use HTTPS">
+    Always use HTTPS in production to encrypt API keys and data in transit.
+  </Accordion>
+  
+  <Accordion title="Implement IP restrictions">
+    Configure IP restrictions on User documents to limit API access to specific IP addresses.
+  </Accordion>
+  
+  <Accordion title="Monitor API usage">
+    Enable API request logging in System Settings to track and audit API usage.
+  </Accordion>
+  
+  <Accordion title="Principle of least privilege">
+    Grant users only the minimum permissions needed for their API operations.
+  </Accordion>
+</AccordionGroup>
+
+## Authentication errors
+
+Common authentication errors and their meanings:
+
+| Error | Description |
+|-------|-------------|
+| `401 Unauthorized` | Missing or invalid authentication credentials |
+| `403 Forbidden` | Valid credentials but insufficient permissions |
+| `InvalidAuthorizationToken` | Malformed or invalid token format |
+| `AuthenticationError` | Generic authentication failure |
+| `CSRFTokenError` | Missing or invalid CSRF token for session auth |
+
+## Example: Complete authentication flow
+
+Here's a complete example using API keys in Python:
+
+```python
+import requests
+import os
+
+# Load credentials from environment
+API_KEY = os.getenv('FRAPPE_API_KEY')
+API_SECRET = os.getenv('FRAPPE_API_SECRET')
+SITE_URL = 'https://your-site.com'
+
+# Create session with auth
+session = requests.Session()
+session.headers.update({
+    'Authorization': f'token {API_KEY}:{API_SECRET}',
+    'Content-Type': 'application/json'
+})
+
+# Make authenticated requests
+response = session.get(f'{SITE_URL}/api/v2/document/Task')
+if response.status_code == 200:
+    tasks = response.json()['data']
+    print(f"Found {len(tasks)} tasks")
+else:
+    print(f"Error: {response.status_code}")
+    print(response.json())
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Resource endpoints" href="/api/rest/resources" icon="database">
+    Learn CRUD operations on DocTypes
+  </Card>
+  <Card title="Method endpoints" href="/api/rest/methods" icon="code">
+    Call custom Python methods
+  </Card>
+</CardGroup>

@@ -1,0 +1,356 @@
+---
+title: Workflows
+description: Define and automate approval workflows for documents in Frappe Framework
+---
+
+Frappe Framework provides a powerful workflow engine that allows you to define multi-step approval processes for documents.
+
+## What are workflows?
+
+Workflows define a set of states and transitions that a document can go through, with optional approval requirements and conditions.
+
+Key components:
+
+- **States**: Different stages a document can be in (e.g., Draft, Pending Approval, Approved)
+- **Transitions**: Rules for moving between states
+- **Actions**: User actions that trigger transitions
+- **Conditions**: Optional conditions that must be met for transitions
+
+## Creating a workflow
+
+Create a workflow for a DocType:
+
+```python
+import frappe
+
+# Create workflow
+workflow = frappe.get_doc({
+    "doctype": "Workflow",
+    "workflow_name": "Leave Application Approval",
+    "document_type": "Leave Application",
+    "is_active": 1,
+    "workflow_state_field": "workflow_state",
+    "states": [
+        {
+            "state": "Draft",
+            "doc_status": "0",
+            "allow_edit": "Employee"
+        },
+        {
+            "state": "Pending Approval",
+            "doc_status": "0",
+            "allow_edit": "Leave Approver"
+        },
+        {
+            "state": "Approved",
+            "doc_status": "1",
+            "allow_edit": "Leave Approver"
+        },
+        {
+            "state": "Rejected",
+            "doc_status": "2"
+        }
+    ],
+    "transitions": [
+        {
+            "state": "Draft",
+            "action": "Submit",
+            "next_state": "Pending Approval",
+            "allowed": "Employee"
+        },
+        {
+            "state": "Pending Approval",
+            "action": "Approve",
+            "next_state": "Approved",
+            "allowed": "Leave Approver"
+        },
+        {
+            "state": "Pending Approval",
+            "action": "Reject",
+            "next_state": "Rejected",
+            "allowed": "Leave Approver"
+        }
+    ]
+}).insert()
+```
+
+## Workflow states
+
+Define the states a document can be in:
+
+```python
+{
+    "state": "Pending Approval",
+    "doc_status": "0",  # 0=Draft, 1=Submitted, 2=Cancelled
+    "allow_edit": "Leave Approver",  # Role allowed to edit
+    "update_field": "status",  # Field to update
+    "update_value": "Pending"  # Value to set
+}
+```
+
+### State properties
+
+- `state`: Name of the state
+- `doc_status`: Document status (0=Draft, 1=Submitted, 2=Cancelled)
+- `allow_edit`: Role allowed to edit in this state
+- `update_field`: Optional field to update when entering state
+- `update_value`: Value to set in update_field
+
+## Workflow transitions
+
+Define how documents move between states:
+
+```python
+{
+    "state": "Pending Approval",
+    "action": "Approve",
+    "next_state": "Approved",
+    "allowed": "Leave Approver",
+    "condition": "doc.leave_days <= 5"
+}
+```
+
+### Transition properties
+
+- `state`: Current state
+- `action`: Action name shown to user
+- `next_state`: State to transition to
+- `allowed`: Role allowed to perform action
+- `condition`: Optional Python expression to evaluate
+- `action_method`: Optional method to execute on transition
+
+## Conditional transitions
+
+Add conditions to transitions:
+
+```python
+{
+    "state": "Pending Approval",
+    "action": "Auto Approve",
+    "next_state": "Approved",
+    "allowed": "Leave Approver",
+    "condition": "doc.leave_days <= 2 and doc.leave_balance >= doc.leave_days"
+}
+```
+
+Conditions can access:
+
+- `doc`: The document object
+- `frappe`: The frappe module
+
+## Workflow actions
+
+Execute custom code on transitions:
+
+```python
+# In DocType controller
+class LeaveApplication(Document):
+    def on_workflow_action(self, action):
+        """Called when workflow action is performed"""
+        if action == "Approve":
+            self.send_approval_notification()
+        elif action == "Reject":
+            self.send_rejection_notification()
+    
+    def send_approval_notification(self):
+        frappe.sendmail(
+            recipients=[self.employee_email],
+            subject=f"Leave Application {self.name} Approved",
+            message="Your leave application has been approved."
+        )
+```
+
+## Workflow state field
+
+The workflow automatically creates a custom field to store the current state:
+
+```python
+# Access workflow state
+doc = frappe.get_doc("Leave Application", "LA-001")
+print(doc.workflow_state)  # "Pending Approval"
+
+# Check state
+if doc.workflow_state == "Approved":
+    process_approved_leave(doc)
+```
+
+## Multiple approvers
+
+Implement multi-level approval:
+
+```python
+workflow = frappe.get_doc({
+    "doctype": "Workflow",
+    "workflow_name": "Purchase Order Approval",
+    "document_type": "Purchase Order",
+    "states": [
+        {"state": "Draft", "doc_status": "0"},
+        {"state": "Pending Manager Approval", "doc_status": "0"},
+        {"state": "Pending Director Approval", "doc_status": "0"},
+        {"state": "Approved", "doc_status": "1"}
+    ],
+    "transitions": [
+        {
+            "state": "Draft",
+            "action": "Submit",
+            "next_state": "Pending Manager Approval",
+            "allowed": "Employee"
+        },
+        {
+            "state": "Pending Manager Approval",
+            "action": "Approve",
+            "next_state": "Pending Director Approval",
+            "allowed": "Manager",
+            "condition": "doc.grand_total > 10000"
+        },
+        {
+            "state": "Pending Manager Approval",
+            "action": "Approve",
+            "next_state": "Approved",
+            "allowed": "Manager",
+            "condition": "doc.grand_total <= 10000"
+        },
+        {
+            "state": "Pending Director Approval",
+            "action": "Approve",
+            "next_state": "Approved",
+            "allowed": "Director"
+        }
+    ]
+})
+```
+
+## Email notifications
+
+Send email alerts on workflow actions:
+
+```python
+# Enable in workflow
+workflow.send_email_alert = 1
+workflow.save()
+
+# Create email alert
+email_alert = frappe.get_doc({
+    "doctype": "Email Alert",
+    "subject": "Leave Application Pending Approval",
+    "document_type": "Leave Application",
+    "event": "Workflow State Change",
+    "enabled": 1,
+    "recipients": [
+        {"email_by_document_field": "leave_approver_email"}
+    ],
+    "message": """
+        <p>A leave application is pending your approval:</p>
+        <p>Employee: {{ doc.employee_name }}</p>
+        <p>From: {{ doc.from_date }}</p>
+        <p>To: {{ doc.to_date }}</p>
+        <p>Days: {{ doc.total_leave_days }}</p>
+    """
+}).insert()
+```
+
+## Workflow permissions
+
+Control who can perform actions:
+
+```python
+# Check if user can perform action
+from frappe.model.workflow import can_apply_workflow
+
+if can_apply_workflow(doc):
+    # Show workflow actions
+    pass
+
+# Get allowed actions for user
+from frappe.model.workflow import get_transitions
+
+transitions = get_transitions(doc)
+for transition in transitions:
+    print(f"Allowed action: {transition['action']}")
+```
+
+## Workflow state count
+
+Get count of documents in each state:
+
+```python
+from frappe.workflow.doctype.workflow.workflow import get_workflow_state_count
+
+states_to_exclude = ["Approved", "Rejected"]
+counts = get_workflow_state_count(
+    "Leave Application",
+    "workflow_state",
+    states_to_exclude
+)
+
+# Returns: [{"workflow_state": "Pending Approval", "count": 5}]
+```
+
+## Custom workflow methods
+
+Define custom methods for workflow actions:
+
+```python
+# In hooks.py
+workflow_methods = [
+    "myapp.workflows.custom_approval_method"
+]
+
+# Custom method
+def custom_approval_method(doc, transition):
+    """Custom logic for workflow transition"""
+    if transition.action == "Approve":
+        # Custom approval logic
+        doc.approval_date = frappe.utils.nowdate()
+        doc.approved_by = frappe.session.user
+```
+
+## Bypassing workflow
+
+Bypass workflow for specific scenarios:
+
+```python
+import frappe
+
+def update_without_workflow(doctype, name, field, value):
+    """Update document without triggering workflow"""
+    doc = frappe.get_doc(doctype, name)
+    
+    # Bypass workflow
+    doc.flags.ignore_workflow = True
+    
+    doc.set(field, value)
+    doc.save()
+```
+
+## Workflow validation
+
+Validate workflow configuration:
+
+```python
+class Workflow(Document):
+    def validate_docstatus(self):
+        """Validate workflow state docstatus values"""
+        # Cannot change from cancelled state
+        # Cannot go from draft to cancelled
+        # Must submit before cancelling
+        for transition in self.transitions:
+            state = get_state(transition.state)
+            next_state = get_state(transition.next_state)
+            
+            if state.doc_status == 2:
+                frappe.throw("Cannot change state of Cancelled Document")
+            
+            if state.doc_status == 0 and next_state.doc_status == 2:
+                frappe.throw("Cannot cancel before submitting")
+```
+
+## Workflow best practices
+
+1. **Keep it simple**: Don't create overly complex workflows
+2. **Use conditions**: Add conditions to prevent invalid transitions
+3. **Email notifications**: Keep users informed of workflow progress
+4. **Permission roles**: Use specific roles for different approval levels
+5. **Test thoroughly**: Test all possible paths through the workflow
+6. **Document processes**: Maintain documentation of workflow logic
+7. **Monitor performance**: Track workflow bottlenecks and delays

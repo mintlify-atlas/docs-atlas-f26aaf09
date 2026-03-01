@@ -1,0 +1,113 @@
+---
+title: Creating a new app
+description: Learn how to create a new Frappe app from scratch
+---
+
+Apps are the building blocks of Frappe Framework. They allow you to extend the core functionality and build custom applications.
+
+## Creating an app
+
+Use the `bench make-app` command to create a new app:
+
+```bash
+bench make-app my_app
+```
+
+You'll be prompted for app details:
+
+<Steps>
+  <Step title="Provide app information">
+    Enter the following details when prompted:
+    - **App Title**: Human-readable name (e.g., "My App")
+    - **App Description**: Brief description of what your app does
+    - **App Publisher**: Your name or company name
+    - **App Email**: Contact email address
+    - **App License**: Choose from popular licenses (MIT, GPL, etc.)
+  </Step>
+
+  <Step title="Choose branch name">
+    Select the branch name (defaults to the Frappe version branch)
+  </Step>
+
+  <Step title="Configure GitHub workflow (optional)">
+    Decide whether to create GitHub Actions for automated testing
+  </Step>
+</Steps>
+
+## What gets created
+
+The command creates a complete app structure:
+
+```
+my_app/
+├── my_app/
+│   ├── __init__.py
+│   ├── hooks.py              # App configuration and hooks
+│   ├── patches.txt           # Database migration patches
+│   ├── modules.txt           # List of modules
+│   ├── config/              # Desk configuration
+│   ├── public/              # Static assets (JS, CSS)
+│   ├── templates/           # Jinja templates
+│   └── www/                 # Web pages
+├── pyproject.toml           # Python package configuration
+├── license.txt
+├── README.md
+└── .gitignore
+```
+
+## Installing the app
+
+After creating your app, install it on a site:
+
+<Steps>
+  <Step title="Get the app in bench">
+    If your app is in a remote repository:
+    ```bash
+    bench get-app https://github.com/username/my_app
+    ```
+    
+    If you created it locally, it's already available.
+  </Step>
+
+  <Step title="Install on a site">
+    ```bash
+    bench --site sitename install-app my_app
+    ```
+  </Step>
+
+  <Step title="Build assets">
+    Build JavaScript and CSS assets:
+    ```bash
+    bench build --app my_app
+    ```
+  </Step>
+</Steps>
+
+## CLI reference
+
+The `make-app` command is defined in `/home/daytona/workspace/source/frappe/commands/utils.py:803`:
+
+```python
+@click.command("make-app")
+@click.argument("destination")
+@click.argument("app_name")
+@click.option("--no-git", is_flag=True, default=False, 
+              help="Do not initialize git repository for the app")
+def make_app(destination, app_name, no_git=False):
+    "Creates a boilerplate app"
+```
+
+### Options
+
+- `destination`: Directory where the app will be created (usually `.` for current directory)
+- `app_name`: Name of the app in snake_case
+- `--no-git`: Skip git initialization
+
+## Next steps
+
+After creating your app:
+
+1. Understand the [app structure](/apps/structure)
+2. Create your first [DocType](/apps/doctypes)
+3. Add [customizations](/apps/customization)
+4. Configure [hooks](/apps/hooks-reference)

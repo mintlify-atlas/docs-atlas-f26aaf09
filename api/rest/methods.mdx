@@ -1,0 +1,648 @@
+---
+title: Custom method endpoints
+---
+
+Method endpoints allow you to call whitelisted Python functions via the REST API. This enables you to implement custom business logic and expose it through HTTP endpoints.
+
+## API versions
+
+Method endpoints are available in both V1 and V2:
+
+- **V1**: `/api/method/{methodname}`
+- **V2**: `/api/v2/method/{methodname}`
+
+V2 also supports DocType-scoped methods:
+
+- **V2**: `/api/v2/method/{doctype}/{method}`
+
+## Call a whitelisted method
+
+Call any whitelisted Python function.
+
+### V1 endpoint
+
+```bash
+GET /api/method/{methodname}
+POST /api/method/{methodname}
+```
+
+### V2 endpoint
+
+```bash
+GET /api/v2/method/{methodname}
+POST /api/v2/method/{methodname}
+```
+
+### Example: Simple method call
+
+**Define the method:**
+
+```python
+# myapp/api.py
+import frappe
+
+@frappe.whitelist()
+def get_dashboard_stats():
+    """
+    Get dashboard statistics.
+    """
+    return {
+        "total_tasks": frappe.db.count("Task"),
+        "open_tasks": frappe.db.count("Task", {"status": "Open"}),
+        "closed_tasks": frappe.db.count("Task", {"status": "Closed"})
+    }
+```
+
+**Call the method:**
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/method/myapp.api.get_dashboard_stats
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "total_tasks": 150,
+    "open_tasks": 42,
+    "closed_tasks": 108
+  }
+}
+```
+
+## Method with parameters
+
+Pass parameters as query strings (GET) or in the request body (POST).
+
+### Example: Method with parameters
+
+**Define the method:**
+
+```python
+# myapp/api.py
+import frappe
+from frappe.utils import getdate, add_days
+
+@frappe.whitelist()
+def create_task(subject, priority="Medium", due_date=None):
+    """
+    Create a new task with given parameters.
+    
+    Args:
+        subject (str): Task subject
+        priority (str): Task priority (Low/Medium/High)
+        due_date (str): Due date in YYYY-MM-DD format
+    """
+    task = frappe.get_doc({
+        "doctype": "Task",
+        "subject": subject,
+        "priority": priority,
+        "due_date": due_date or add_days(None, 7)
+    })
+    task.insert()
+    
+    return task
+```
+
+**Call with GET:**
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/v2/method/myapp.api.create_task?subject=New%20Task&priority=High'
+```
+
+**Call with POST:**
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "New Task",
+    "priority": "High",
+    "due_date": "2024-02-01"
+  }' \
+  https://your-site.com/api/v2/method/myapp.api.create_task
+```
+
+## DocType-scoped methods (V2)
+
+Call methods from DocType controllers using a shorter path.
+
+### V2 endpoint
+
+```bash
+GET /api/v2/method/{doctype}/{method}
+POST /api/v2/method/{doctype}/{method}
+```
+
+### Example: DocType method
+
+**Define the method:**
+
+```python
+# myapp/myapp/doctype/task/task.py
+import frappe
+from frappe.model.document import Document
+
+class Task(Document):
+    pass
+
+# Module-level function in the doctype controller
+@frappe.whitelist()
+def get_task_summary(status=None):
+    """
+    Get summary of tasks by status.
+    """
+    filters = {}
+    if status:
+        filters["status"] = status
+    
+    tasks = frappe.get_all(
+        "Task",
+        filters=filters,
+        fields=["name", "subject", "priority", "status"]
+    )
+    
+    return {
+        "count": len(tasks),
+        "tasks": tasks
+    }
+```
+
+**Call the method:**
+
+```bash
+# Full path
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/v2/method/myapp.myapp.doctype.task.task.get_task_summary?status=Open'
+
+# Short path (V2 only)
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/v2/method/Task/get_task_summary?status=Open'
+```
+
+## Run method on in-memory document (V2)
+
+Execute a whitelisted method on an in-memory document without necessarily loading it from the database.
+
+### V2 endpoint
+
+```bash
+GET /api/v2/method/run_doc_method
+POST /api/v2/method/run_doc_method
+```
+
+### Parameters
+
+<ParamField body="method" type="string" required>
+  Name of the method to execute
+</ParamField>
+
+<ParamField body="document" type="object or JSON string" required>
+  Document data as object or JSON string
+</ParamField>
+
+<ParamField body="kwargs" type="object">
+  Additional arguments to pass to the method
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "validate_dates",
+    "document": {
+      "doctype": "Task",
+      "name": "TASK-0001",
+      "start_date": "2024-01-15",
+      "end_date": "2024-01-10"
+    }
+  }' \
+  https://your-site.com/api/v2/method/run_doc_method
+```
+
+This is useful for:
+- Client-side validation before saving
+- Calculating derived values
+- Running business logic on draft documents
+
+The method must be whitelisted in the DocType controller:
+
+```python
+from frappe.model.document import Document
+import frappe
+
+class Task(Document):
+    @frappe.whitelist()
+    def validate_dates(self):
+        """
+        Validate task dates.
+        """
+        from frappe.utils import getdate
+        
+        if self.start_date and self.end_date:
+            if getdate(self.end_date) < getdate(self.start_date):
+                frappe.throw("End date cannot be before start date")
+        
+        return {"valid": True}
+```
+
+## Built-in methods
+
+Frappe provides several built-in methods:
+
+### Ping
+
+Check if the server is responding.
+
+```bash
+GET /api/v2/method/ping
+```
+
+**Response:**
+
+```json
+{
+  "data": "pong"
+}
+```
+
+### Login
+
+Authenticate and create a session.
+
+```bash
+POST /api/v2/method/login
+```
+
+**Request body:**
+
+```json
+{
+  "usr": "user@example.com",
+  "pwd": "password"
+}
+```
+
+### Logout
+
+End the current session.
+
+```bash
+POST /api/v2/method/logout
+```
+
+### Upload file
+
+Upload a file and attach it to a document.
+
+```bash
+POST /api/v2/method/upload_file
+```
+
+**Example:**
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -F "file=@/path/to/file.pdf" \
+  -F "doctype=Task" \
+  -F "docname=TASK-0001" \
+  https://your-site.com/api/v2/method/upload_file
+```
+
+## Whitelisting methods
+
+Methods must be explicitly whitelisted to be accessible via API.
+
+### Using the decorator
+
+```python
+import frappe
+
+@frappe.whitelist()
+def my_public_method():
+    """This method can be called via API."""
+    pass
+```
+
+### Allow guest access
+
+By default, whitelisted methods require authentication. To allow guest access:
+
+```python
+@frappe.whitelist(allow_guest=True)
+def public_data():
+    """This method can be called without authentication."""
+    return {"message": "Hello, guest!"}
+```
+
+### HTTP method restrictions
+
+Restrict which HTTP methods can call your function:
+
+```python
+@frappe.whitelist(methods=["POST"])
+def create_record():
+    """Only accessible via POST requests."""
+    pass
+
+@frappe.whitelist(methods=["GET"])
+def get_data():
+    """Only accessible via GET requests."""
+    pass
+```
+
+If not specified, Frappe automatically determines safe methods:
+- Methods without side effects can use GET
+- Methods that modify data should use POST
+
+## Rate limiting
+
+Apply rate limits to prevent abuse:
+
+```python
+import frappe
+from frappe.rate_limiter import rate_limit
+
+@frappe.whitelist(allow_guest=True)
+@rate_limit(limit=10, seconds=60)
+def send_otp(phone_number):
+    """
+    Send OTP to phone number.
+    Rate limited to 10 calls per minute.
+    """
+    # Implementation
+    pass
+```
+
+Rate limit parameters:
+- `limit`: Maximum number of calls
+- `seconds`: Time window in seconds
+
+## Server scripts
+
+Create API endpoints without writing code files using Server Scripts.
+
+### Create a Server Script
+
+1. Go to: **Server Script List**
+2. Create a new Server Script
+3. Set **Script Type**: "API"
+4. Set **API Method**: Your method name (e.g., "myapp.get_stats")
+5. Write your script:
+
+```python
+# Server Script API
+data = {
+    "tasks": frappe.db.count("Task"),
+    "users": frappe.db.count("User")
+}
+
+frappe.response['message'] = data
+```
+
+### Call the Server Script
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/method/myapp.get_stats
+```
+
+Server scripts are automatically whitelisted and don't require code deployment.
+
+## Error handling
+
+Handle errors gracefully in your methods:
+
+```python
+import frappe
+
+@frappe.whitelist()
+def process_payment(amount, currency="USD"):
+    """
+    Process a payment.
+    """
+    try:
+        # Validate input
+        amount = float(amount)
+        if amount <= 0:
+            frappe.throw(
+                "Amount must be greater than 0",
+                frappe.ValidationError
+            )
+        
+        # Process payment
+        result = process_payment_gateway(amount, currency)
+        
+        return {
+            "success": True,
+            "transaction_id": result.transaction_id
+        }
+        
+    except ValueError:
+        frappe.throw(
+            "Invalid amount format",
+            frappe.ValidationError
+        )
+    except Exception as e:
+        frappe.log_error("Payment processing failed")
+        frappe.throw(
+            "Payment processing failed. Please try again.",
+            frappe.ValidationError
+        )
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate HTTP methods">
+    - Use GET for read-only operations
+    - Use POST for operations that modify data
+    - Specify `methods` parameter in `@frappe.whitelist()` when appropriate
+  </Accordion>
+  
+  <Accordion title="Validate input">
+    Always validate and sanitize input parameters:
+    
+    ```python
+    @frappe.whitelist()
+    def update_status(task_id, status):
+        # Validate task exists
+        if not frappe.db.exists("Task", task_id):
+            frappe.throw("Task not found")
+        
+        # Validate status value
+        valid_statuses = ["Open", "Working", "Closed"]
+        if status not in valid_statuses:
+            frappe.throw(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+        
+        # Update task
+        frappe.db.set_value("Task", task_id, "status", status)
+    ```
+  </Accordion>
+  
+  <Accordion title="Check permissions">
+    Verify user has appropriate permissions:
+    
+    ```python
+    @frappe.whitelist()
+    def delete_task(task_id):
+        # Check if user has delete permission
+        if not frappe.has_permission("Task", "delete", task_id):
+            frappe.throw("Not permitted", frappe.PermissionError)
+        
+        frappe.delete_doc("Task", task_id)
+    ```
+  </Accordion>
+  
+  <Accordion title="Return meaningful responses">
+    Return structured data that clients can easily consume:
+    
+    ```python
+    @frappe.whitelist()
+    def process_order(order_id):
+        try:
+            result = process(order_id)
+            return {
+                "success": True,
+                "order_id": order_id,
+                "status": result.status,
+                "message": "Order processed successfully"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use type hints">
+    Document parameters and return types:
+    
+    ```python
+    @frappe.whitelist()
+    def get_user_tasks(user: str, status: str | None = None) -> dict[str, any]:
+        """
+        Get tasks for a user.
+        
+        Args:
+            user: Email of the user
+            status: Optional task status filter
+            
+        Returns:
+            Dictionary with task list and count
+        """
+        filters = {"assigned_to": user}
+        if status:
+            filters["status"] = status
+        
+        tasks = frappe.get_all("Task", filters=filters)
+        
+        return {
+            "tasks": tasks,
+            "count": len(tasks)
+        }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Example: Complete API implementation
+
+Here's a complete example of a custom API module:
+
+```python
+# myapp/api.py
+import frappe
+from frappe import _
+from frappe.rate_limiter import rate_limit
+
+@frappe.whitelist(allow_guest=True)
+@rate_limit(limit=100, seconds=60)
+def get_public_projects():
+    """
+    Get list of public projects.
+    Rate limited to 100 requests per minute.
+    """
+    projects = frappe.get_all(
+        "Project",
+        filters={"is_public": 1},
+        fields=["name", "project_name", "description", "status"]
+    )
+    
+    return {
+        "projects": projects,
+        "count": len(projects)
+    }
+
+@frappe.whitelist(methods=["POST"])
+def create_project(project_name, description=None):
+    """
+    Create a new project.
+    Only accessible via POST.
+    """
+    # Check permission
+    if not frappe.has_permission("Project", "create"):
+        frappe.throw(_("Not permitted to create projects"), frappe.PermissionError)
+    
+    # Validate input
+    if not project_name:
+        frappe.throw(_("Project name is required"), frappe.ValidationError)
+    
+    # Create project
+    project = frappe.get_doc({
+        "doctype": "Project",
+        "project_name": project_name,
+        "description": description
+    })
+    project.insert()
+    
+    return {
+        "success": True,
+        "project": project.name,
+        "message": _("Project created successfully")
+    }
+
+@frappe.whitelist()
+def get_project_stats(project):
+    """
+    Get statistics for a project.
+    """
+    # Check permission
+    if not frappe.has_permission("Project", "read", project):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    
+    # Get stats
+    total_tasks = frappe.db.count("Task", {"project": project})
+    completed_tasks = frappe.db.count("Task", {"project": project, "status": "Completed"})
+    
+    return {
+        "project": project,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "completion_rate": (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+    }
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Resource endpoints" href="/api/rest/resources" icon="database">
+    Learn about CRUD operations on DocTypes
+  </Card>
+  <Card title="Authentication" href="/api/rest/authentication" icon="key">
+    Secure your API endpoints
+  </Card>
+</CardGroup>

@@ -1,0 +1,412 @@
+---
+title: Form API
+description: JavaScript API for working with forms and documents
+---
+
+The Form API provides methods to interact with forms, set and get values, manipulate fields, and add custom buttons.
+
+## Form object (frm)
+
+The form object (`frm`) is available in all form scripts and provides access to the current document and form controls.
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    refresh(frm) {
+        // frm is the form object
+        console.log(frm.doc);
+    }
+});
+```
+
+## Getting and setting values
+
+### frm.set_value()
+
+Set the value of a field.
+
+```javascript
+frm.set_value('customer_name', 'New Customer');
+
+// Set multiple values
+frm.set_value({
+    customer_name: 'New Customer',
+    territory: 'All Territories'
+});
+```
+
+<ParamField path="fieldname" type="string | object" required>
+  Field name or object with multiple field-value pairs
+</ParamField>
+
+<ParamField path="value" type="any">
+  Value to set (not needed if first parameter is an object)
+</ParamField>
+
+<ParamField path="if_missing" type="boolean">
+  Only set the value if field is currently empty
+</ParamField>
+
+### frm.get_value()
+
+Get the current value of a field.
+
+```javascript
+const customer = frm.doc.customer;
+// or
+const customer = frm.get_value('customer');
+```
+
+Note: You can also access values directly via `frm.doc.fieldname`.
+
+## Field manipulation
+
+### frm.set_df_property()
+
+Set a property of a field's definition.
+
+```javascript
+// Make field read-only
+frm.set_df_property('customer_name', 'read_only', 1);
+
+// Make field required
+frm.set_df_property('territory', 'reqd', 1);
+
+// Change field label
+frm.set_df_property('custom_field', 'label', 'New Label');
+```
+
+<ParamField path="fieldname" type="string" required>
+  Field name
+</ParamField>
+
+<ParamField path="property" type="string" required>
+  Property to set (e.g., 'read_only', 'reqd', 'hidden', 'label')
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to set for the property
+</ParamField>
+
+### frm.toggle_display()
+
+Show or hide a field.
+
+```javascript
+frm.toggle_display('custom_field', doc.show_custom);
+```
+
+### frm.toggle_reqd()
+
+Make a field required or optional.
+
+```javascript
+frm.toggle_reqd('delivery_date', doc.docstatus === 0);
+```
+
+### frm.toggle_enable()
+
+Enable or disable a field.
+
+```javascript
+frm.toggle_enable('customer', doc.docstatus === 0);
+```
+
+### frm.refresh_field()
+
+Refresh a field to reflect changes in its value or properties.
+
+```javascript
+frm.set_value('total_amount', 1000);
+frm.refresh_field('total_amount');
+```
+
+<ParamField path="fieldname" type="string" required>
+  Field name to refresh
+</ParamField>
+
+## Field queries
+
+### frm.set_query()
+
+Set a filter query for Link or Table fields.
+
+```javascript
+// Filter for a Link field
+frm.set_query('customer', function() {
+    return {
+        filters: {
+            customer_group: 'Commercial'
+        }
+    };
+});
+
+// Filter for a field in a child table
+frm.set_query('item_code', 'items', function() {
+    return {
+        filters: {
+            is_sales_item: 1
+        }
+    };
+});
+```
+
+<ParamField path="fieldname" type="string" required>
+  Field name to set query for
+</ParamField>
+
+<ParamField path="parent_fieldname" type="string">
+  Parent table fieldname (for child table fields)
+</ParamField>
+
+<ParamField path="query" type="function" required>
+  Function that returns a query object with filters
+</ParamField>
+
+### frm.add_fetch()
+
+Automatically fetch values when a Link field is selected.
+
+```javascript
+frm.add_fetch('customer', 'customer_name', 'customer_name');
+frm.add_fetch('customer', 'territory', 'territory');
+```
+
+<ParamField path="link_field" type="string" required>
+  Link field name
+</ParamField>
+
+<ParamField path="source_field" type="string" required>
+  Field name in the linked DocType to fetch from
+</ParamField>
+
+<ParamField path="target_field" type="string" required>
+  Field name in current DocType to set the fetched value
+</ParamField>
+
+## Custom buttons
+
+### frm.add_custom_button()
+
+Add a custom button to the form toolbar.
+
+```javascript
+// Simple button
+frm.add_custom_button(__('Create Invoice'), function() {
+    // Button action
+    frappe.msgprint('Creating invoice...');
+});
+
+// Button in a dropdown group
+frm.add_custom_button(__('Send Email'), function() {
+    // Action
+}, __('Actions'));
+```
+
+<ParamField path="label" type="string" required>
+  Button label
+</ParamField>
+
+<ParamField path="action" type="function" required>
+  Function to execute when button is clicked
+</ParamField>
+
+<ParamField path="group" type="string">
+  Group name to add button under a dropdown
+</ParamField>
+
+### frm.remove_custom_button()
+
+Remove a custom button.
+
+```javascript
+frm.remove_custom_button('Create Invoice');
+
+// Remove from group
+frm.remove_custom_button('Send Email', 'Actions');
+```
+
+### frm.change_custom_button_type()
+
+Change the appearance of a custom button.
+
+```javascript
+frm.change_custom_button_type('Submit', null, 'primary');
+```
+
+## Document operations
+
+### frm.save()
+
+Save the current document.
+
+```javascript
+frm.save();
+
+// With callback
+frm.save('Save', function() {
+    frappe.msgprint('Document saved');
+});
+```
+
+### frm.save_or_update()
+
+Save or update the document.
+
+```javascript
+frm.save_or_update();
+```
+
+### frm.reload_doc()
+
+Reload the document from the server.
+
+```javascript
+frm.reload_doc();
+```
+
+### frm.trigger_validate()
+
+Trigger validation without saving.
+
+```javascript
+frm.trigger_validate();
+```
+
+### frm.is_new()
+
+Check if the document is new (not saved).
+
+```javascript
+if (frm.is_new()) {
+    frappe.msgprint('Please save the document first');
+}
+```
+
+### frm.is_dirty()
+
+Check if the document has unsaved changes.
+
+```javascript
+if (frm.is_dirty()) {
+    frappe.msgprint('You have unsaved changes');
+}
+```
+
+### frm.dirty()
+
+Mark the document as modified.
+
+```javascript
+frm.dirty();
+```
+
+## Field access
+
+### frm.fields_dict
+
+Access field objects directly.
+
+```javascript
+// Get field object
+const field = frm.fields_dict['customer_name'];
+
+// Set field property
+field.df.read_only = 1;
+field.refresh();
+
+// Get field value through input
+const value = field.get_value();
+```
+
+## Child tables
+
+### frm.clear_table()
+
+Clear all rows in a child table.
+
+```javascript
+frm.clear_table('items');
+frm.refresh_field('items');
+```
+
+### frm.add_child()
+
+Add a new row to a child table.
+
+```javascript
+const row = frm.add_child('items');
+row.item_code = 'ITEM-001';
+row.qty = 5;
+frm.refresh_field('items');
+```
+
+<ParamField path="fieldname" type="string" required>
+  Child table field name
+</ParamField>
+
+<ParamField path="values" type="object">
+  Initial values for the new row
+</ParamField>
+
+## Form events
+
+Form events are triggered at different stages of the form lifecycle.
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    // When form is loaded for the first time
+    onload(frm) {
+        console.log('Form loaded');
+    },
+    
+    // When form is refreshed
+    refresh(frm) {
+        console.log('Form refreshed');
+    },
+    
+    // Before the document is saved
+    before_save(frm) {
+        console.log('Before save');
+    },
+    
+    // After the document is saved
+    after_save(frm) {
+        console.log('Document saved');
+    },
+    
+    // When a field value changes
+    validate(frm) {
+        console.log('Validating');
+    },
+    
+    // Before submit
+    before_submit(frm) {
+        console.log('Before submit');
+    },
+    
+    // When document is submitted
+    on_submit(frm) {
+        console.log('Document submitted');
+    }
+});
+```
+
+## Field-level events
+
+Trigger actions when specific fields change.
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    customer: function(frm) {
+        // When customer field changes
+        frappe.db.get_value('Customer', frm.doc.customer, 'territory', (r) => {
+            frm.set_value('territory', r.territory);
+        });
+    },
+    
+    // Multiple fields
+    'customer territory': function(frm) {
+        // Triggered when either customer or territory changes
+    }
+});
+```

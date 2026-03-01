@@ -1,0 +1,507 @@
+---
+title: Permission system
+description: Role-based permissions, user permissions, and access control in Frappe
+---
+
+Frappe implements a comprehensive permission system that combines role-based access control (RBAC) with document-level and field-level permissions, user permissions, and custom permission logic.
+
+## Overview
+
+The permission system has multiple layers:
+
+1. **Role Permissions**: DocType-level permissions for roles
+2. **User Permissions**: Restrict access to specific document records
+3. **Field-level Permissions**: Control access to specific fields based on permission levels
+4. **Controller Permissions**: Custom permission logic in Python
+5. **Share Permissions**: Share specific documents with users
+
+```python
+import frappe
+from frappe.permissions import has_permission
+
+# Check if user has permission
+if has_permission('Sales Order', 'read', user='user@example.com'):
+    print('User can read Sales Order')
+
+# Check document-level permission
+doc = frappe.get_doc('Sales Order', 'SO-0001')
+if doc.has_permission('write'):
+    doc.status = 'Completed'
+    doc.save()
+```
+
+## Role permissions
+
+### Permission types
+
+Standard permission types in Frappe:
+
+```python
+from frappe.permissions import std_rights
+
+print(std_rights)
+# ('select', 'read', 'write', 'create', 'delete', 
+#  'submit', 'cancel', 'amend', 'print', 'email', 
+#  'report', 'import', 'export', 'share')
+```
+
+<Tabs>
+  <Tab title="Read permissions">
+    - **Select**: Access to list view (restricted read)
+    - **Read**: Full read access to documents
+    - **Report**: Access to reports for the DocType
+  </Tab>
+  <Tab title="Write permissions">
+    - **Write**: Modify existing documents
+    - **Create**: Create new documents
+    - **Delete**: Delete documents
+  </Tab>
+  <Tab title="Submit permissions">
+    - **Submit**: Submit documents (for submittable DocTypes)
+    - **Cancel**: Cancel submitted documents
+    - **Amend**: Create amendments from cancelled documents
+  </Tab>
+  <Tab title="Other permissions">
+    - **Print**: Print documents
+    - **Email**: Send documents via email
+    - **Import**: Import data for the DocType
+    - **Export**: Export data
+    - **Share**: Share documents with other users
+  </Tab>
+</Tabs>
+
+### Checking role permissions
+
+```python
+from frappe.permissions import has_permission, get_role_permissions
+
+# Check DocType permission for current user
+if has_permission('Customer', 'write'):
+    print('User can write customers')
+
+# Check for specific user
+if has_permission('Customer', 'create', user='user@example.com'):
+    print('User can create customers')
+
+# Get all permissions for a role
+meta = frappe.get_meta('Sales Order')
+role_perms = get_role_permissions(meta, user='user@example.com')
+print(role_perms)
+# {'read': 1, 'write': 1, 'create': 1, 'delete': 0, ...}
+```
+
+### Document-level permissions
+
+```python
+# Check permission on specific document
+doc = frappe.get_doc('Sales Order', 'SO-0001')
+
+# Check permission (returns boolean)
+if doc.has_permission('submit'):
+    doc.submit()
+
+# Check permission (raises exception if no access)
+doc.check_permission('cancel')
+doc.cancel()
+
+# Get all permissions for document
+from frappe.permissions import get_doc_permissions
+
+perms = get_doc_permissions(doc, user='user@example.com')
+print(perms)
+# {'read': 1, 'write': 1, 'submit': 1, ...}
+```
+
+## User permissions
+
+User permissions restrict access to specific records based on Link field values.
+
+### Creating user permissions
+
+```python
+from frappe.permissions import add_user_permission
+
+# Restrict user to specific customer
+add_user_permission(
+    doctype='Customer',
+    name='CUST-001',
+    user='sales@example.com',
+    applicable_for='Sales Order'  # Apply only to Sales Order
+)
+
+# Allow access to all doctypes linked to this customer
+add_user_permission(
+    doctype='Customer',
+    name='CUST-001',
+    user='sales@example.com',
+    applicable_for=None  # Apply to all doctypes
+)
+```
+
+### User permission behavior
+
+```python
+# User with Customer user permission
+frappe.set_user('sales@example.com')
+
+# Can only access documents linked to permitted customer
+sales_orders = frappe.get_all('Sales Order', 
+    filters={'customer': 'CUST-001'}  # Accessible
+)
+
+# This will be filtered out automatically
+all_orders = frappe.get_all('Sales Order')  # Only returns orders for CUST-001
+
+# Direct access check
+from frappe.permissions import has_user_permission
+
+doc = frappe.get_doc('Sales Order', 'SO-0001')
+if has_user_permission(doc):
+    print('User has access based on user permissions')
+```
+
+### Managing user permissions
+
+```python
+from frappe.permissions import (
+    remove_user_permission,
+    clear_user_permissions_for_doctype,
+    get_user_permissions
+)
+
+# Remove specific permission
+remove_user_permission('Customer', 'CUST-001', 'sales@example.com')
+
+# Clear all user permissions for a doctype
+clear_user_permissions_for_doctype('Customer', user='sales@example.com')
+
+# Get user's permissions
+user_perms = get_user_permissions('sales@example.com')
+print(user_perms)
+# {
+#     'Customer': [{'doc': 'CUST-001', 'applicable_for': None}],
+#     'Territory': [{'doc': 'North', 'applicable_for': 'Sales Order'}]
+# }
+```
+
+## Field-level permissions
+
+### Permission levels
+
+Fields can have different permission levels (permlevel):
+
+```python
+# Field with permlevel 0 (default)
+{
+    'fieldname': 'customer',
+    'label': 'Customer',
+    'fieldtype': 'Link',
+    'permlevel': 0  # Accessible to users with level 0 access
+}
+
+# Field with permlevel 1 (restricted)
+{
+    'fieldname': 'cost_price',
+    'label': 'Cost Price',
+    'fieldtype': 'Currency',
+    'permlevel': 1  # Only accessible to users with level 1 access
+}
+```
+
+### Permission level in roles
+
+```python
+# DocPerm with permlevel
+{
+    'role': 'Sales User',
+    'read': 1,
+    'write': 1,
+    'permlevel': 0  # Can access level 0 fields
+}
+
+{
+    'role': 'Sales Manager',
+    'read': 1,
+    'write': 1,
+    'permlevel': 1  # Can access level 1 fields (including level 0)
+}
+```
+
+### Checking field permissions
+
+```python
+meta = frappe.get_meta('Item')
+
+# Check if user has access to specific permission level
+accessible_levels = meta.get_permlevel_access('write', user='user@example.com')
+print(accessible_levels)  # [0, 1]
+
+# Check specific field access
+if meta.has_permlevel_access_to('cost_price', permission_type='read'):
+    print('User can read cost price')
+
+# Get permitted field names
+permitted_fields = meta.get_permitted_fieldnames(
+    permission_type='read',
+    user='user@example.com'
+)
+print(permitted_fields)  # ['name', 'item_code', 'item_name', ...]
+```
+
+## If Owner permissions
+
+"If Owner" permissions grant access only to documents owned by the user:
+
+```python
+# Role permission with if_owner
+{
+    'role': 'Employee',
+    'read': 1,
+    'write': 0,
+    'if_owner': 1  # Only for documents owned by user
+}
+
+# User can only access their own documents
+doc = frappe.get_doc('Leave Application', 'LA-0001')
+if doc.owner == frappe.session.user:
+    # User has access as owner
+    print(doc.leave_type)
+```
+
+## Controller permissions
+
+Implement custom permission logic in DocType controllers:
+
+```python
+class SalesOrder(Document):
+    def has_permission(self, ptype='read', user=None, debug=False):
+        """Custom permission check"""
+        if not user:
+            user = frappe.session.user
+        
+        # Allow system managers full access
+        if 'System Manager' in frappe.get_roles(user):
+            return True
+        
+        # Sales users can only access their territory
+        if ptype in ('read', 'write'):
+            user_territory = frappe.db.get_value('Sales Person', 
+                {'user': user}, 'territory'
+            )
+            if user_territory and self.territory == user_territory:
+                return True
+        
+        # Owner can always read
+        if ptype == 'read' and self.owner == user:
+            return True
+        
+        return False
+```
+
+### Using hooks for controller permissions
+
+```python
+# In hooks.py
+has_permission = {
+    'Sales Order': 'my_app.permissions.sales_order_permission'
+}
+
+# In my_app/permissions.py
+def sales_order_permission(doc, ptype='read', user=None, debug=False):
+    """Custom permission check for Sales Order"""
+    if not user:
+        user = frappe.session.user
+    
+    # Your custom logic here
+    if doc.status == 'Draft' and doc.owner != user:
+        return False
+    
+    return True
+```
+
+## Permission query conditions
+
+Add SQL conditions to filter lists based on permissions:
+
+```python
+# In hooks.py
+permission_query_conditions = {
+    'Sales Order': 'my_app.permissions.get_sales_order_query_conditions'
+}
+
+# In my_app/permissions.py
+def get_sales_order_query_conditions(user):
+    """Return SQL conditions to filter Sales Order list"""
+    if not user:
+        user = frappe.session.user
+    
+    # System Manager sees everything
+    if 'System Manager' in frappe.get_roles(user):
+        return ''
+    
+    # Sales users see only their territory
+    territories = frappe.get_all('Sales Person',
+        filters={'user': user},
+        pluck='territory'
+    )
+    
+    if territories:
+        return f"""(`tabSales Order`.territory in ({', '.join("'" + t + "'" for t in territories)}))"""
+    
+    # No access
+    return '1=0'
+```
+
+## Share permissions
+
+Share specific documents with users:
+
+```python
+import frappe.share
+
+# Share document with user
+frappe.share.add(
+    doctype='Sales Order',
+    name='SO-0001',
+    user='user@example.com',
+    read=1,
+    write=1,
+    submit=0,
+    notify=1  # Send email notification
+)
+
+# Check if document is shared
+if frappe.share.get_shared(
+    doctype='Sales Order',
+    user='user@example.com',
+    rights=['read'],
+    filters=[['share_name', '=', 'SO-0001']],
+    limit=1
+):
+    print('Document is shared with user')
+
+# Remove share
+frappe.share.remove(
+    doctype='Sales Order',
+    name='SO-0001',
+    user='user@example.com'
+)
+```
+
+## Permission debugging
+
+```python
+# Debug permission check
+result = has_permission(
+    'Sales Order',
+    'write',
+    doc='SO-0001',
+    user='user@example.com',
+    debug=True  # Prints debug information
+)
+
+# Get debug log
+from frappe.permissions import _pop_debug_log
+
+has_permission('Customer', 'write', debug=True)
+debug_log = _pop_debug_log()
+for log in debug_log:
+    print(log)
+```
+
+## Custom permission types
+
+Define custom permission types for specific use cases:
+
+```python
+# In hooks.py - Define custom rights
+from frappe.permissions import std_rights
+
+custom_rights = ['approve', 'audit']
+rights = std_rights + tuple(custom_rights)
+
+# Check custom permission
+if has_permission('Purchase Order', 'approve'):
+    doc.approve()
+```
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Layer permissions appropriately">
+    Use role permissions for broad access control, user permissions for data segmentation, and controller permissions for complex logic.
+  </Card>
+  <Card title="Test with different roles">
+    Always test permission scenarios with different user roles to ensure proper access control.
+  </Card>
+  <Card title="Document permission checks">
+    Always check permissions before modifying documents programmatically:
+    ```python
+    if doc.has_permission('write'):
+        doc.status = 'Approved'
+        doc.save()
+    ```
+  </Card>
+  <Card title="Use permission query conditions">
+    Implement permission_query_conditions to filter lists efficiently rather than checking permissions on each document.
+  </Card>
+</CardGroup>
+
+## Roles and users
+
+### Getting user roles
+
+```python
+from frappe.permissions import get_roles
+
+# Get current user's roles
+roles = get_roles()
+print(roles)  # ['System Manager', 'Sales User', 'Employee']
+
+# Get specific user's roles
+roles = get_roles(user='user@example.com')
+
+# Check if user has role
+if 'Sales Manager' in get_roles():
+    print('User is a Sales Manager')
+```
+
+### Role hierarchy
+
+Frappe has automatic roles:
+
+- **Guest**: Unauthenticated users
+- **All**: All users (including guests)
+- **Desk User**: Users with desk access
+- **Administrator**: Superuser with all permissions
+
+```python
+from frappe.permissions import (
+    GUEST_ROLE,
+    ALL_USER_ROLE,
+    SYSTEM_USER_ROLE,
+    ADMIN_ROLE
+)
+
+print(ADMIN_ROLE)        # 'Administrator'
+print(SYSTEM_USER_ROLE)  # 'Desk User'
+print(ALL_USER_ROLE)     # 'All'
+print(GUEST_ROLE)        # 'Guest'
+```
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Learn about DocType and field definitions
+  </Card>
+  <Card title="Document class" icon="file" href="./document">
+    Understand document operations
+  </Card>
+  <Card title="Forms" icon="window" href="./forms">
+    Control field visibility in forms
+  </Card>
+  <Card title="Hooks" icon="webhook" href="./hooks">
+    Extend permission system with hooks
+  </Card>
+</CardGroup>

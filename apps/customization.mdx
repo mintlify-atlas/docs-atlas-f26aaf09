@@ -1,0 +1,371 @@
+---
+title: Customizing apps
+description: Techniques for extending and customizing Frappe apps
+---
+
+Frappe provides multiple ways to customize apps without modifying core code. This keeps your customizations maintainable and upgrade-safe.
+
+## Customization techniques
+
+There are several approaches to customize Frappe apps:
+
+1. **Custom Fields**: Add fields to existing DocTypes
+2. **Custom Scripts**: Add client-side logic to forms
+3. **Server Scripts**: Add server-side logic without code
+4. **Hooks**: Override behavior using app hooks
+5. **Custom Apps**: Create new apps that extend existing ones
+6. **Fixtures**: Export and import customizations
+
+## Custom fields
+
+Add fields to standard DocTypes without modifying them:
+
+<Steps>
+  <Step title="Navigate to Custom Field">
+    Go to **Customize** > **Custom Field** > **New**
+  </Step>
+
+  <Step title="Configure the field">
+    - Select the **DocType** to customize
+    - Set **Field Name** and **Label**
+    - Choose **Field Type**
+    - Set **Insert After** to position the field
+  </Step>
+
+  <Step title="Save">
+    Click **Save** to add the field
+  </Step>
+</Steps>
+
+Custom fields are stored in the database and survive updates.
+
+### Programmatic creation
+
+```python
+import frappe
+
+def create_custom_field():
+    if not frappe.db.exists("Custom Field", "Customer-tax_id"):
+        frappe.get_doc({
+            "doctype": "Custom Field",
+            "dt": "Customer",
+            "label": "Tax ID",
+            "fieldname": "tax_id",
+            "fieldtype": "Data",
+            "insert_after": "customer_name"
+        }).insert()
+```
+
+## Client scripts
+
+Add JavaScript to forms without modifying files:
+
+<Steps>
+  <Step title="Create Client Script">
+    Go to **Customize** > **Client Script** > **New**
+  </Step>
+
+  <Step title="Configure script">
+    - Select **DocType**
+    - Choose **Type** (Form, List, etc.)
+    - Write JavaScript in the **Script** field
+  </Step>
+
+  <Step title="Save and test">
+    Save and test on the form
+  </Step>
+</Steps>
+
+Example:
+
+```javascript
+frappe.ui.form.on('Customer', {
+    refresh: function(frm) {
+        // Add custom button
+        frm.add_custom_button('Send Welcome Email', function() {
+            frappe.call({
+                method: 'my_app.api.send_welcome_email',
+                args: {
+                    customer: frm.doc.name
+                },
+                callback: function(r) {
+                    frappe.msgprint('Email sent!');
+                }
+            });
+        });
+    },
+    
+    customer_type: function(frm) {
+        // Auto-fill based on customer type
+        if (frm.doc.customer_type === 'Company') {
+            frm.set_value('tax_category', 'Corporate');
+        }
+    }
+});
+```
+
+## Server scripts
+
+Add Python logic without creating files:
+
+<Steps>
+  <Step title="Create Server Script">
+    Go to **Customize** > **Server Script** > **New**
+  </Step>
+
+  <Step title="Configure script">
+    - Select **Script Type** (DocType Event, API, Permission Query, etc.)
+    - For DocType events, select the **Reference DocType**
+    - Write Python code in the **Script** field
+  </Step>
+
+  <Step title="Enable script">
+    Check **Enabled** and save
+  </Step>
+</Steps>
+
+Example for Before Save event:
+
+```python
+# Server Script for Invoice (Before Save)
+if doc.customer:
+    customer = frappe.get_doc('Customer', doc.customer)
+    doc.customer_group = customer.customer_group
+    doc.territory = customer.territory
+```
+
+Example for API endpoint:
+
+```python
+# Server Script API
+# Accessible at /api/method/my_custom_api
+
+customer = frappe.get_value('Customer', 
+    filters={'email': frappe.form_dict.email},
+    fieldname=['name', 'customer_name'])
+
+frappe.response['message'] = customer
+```
+
+## Using hooks
+
+Hooks allow you to override or extend framework behavior. Define hooks in `hooks.py`:
+
+### Override whitelisted methods
+
+```python
+# hooks.py
+override_whitelisted_methods = {
+    "frappe.desk.form.load.getdoc": "my_app.overrides.custom_getdoc"
+}
+```
+
+```python
+# my_app/overrides.py
+import frappe
+
+@frappe.whitelist()
+def custom_getdoc(doctype, name, user=None):
+    # Custom logic before loading document
+    doc = frappe.get_doc(doctype, name)
+    # Add custom processing
+    return doc
+```
+
+### Document events
+
+Hook into document lifecycle:
+
+```python
+# hooks.py
+doc_events = {
+    "Customer": {
+        "before_save": "my_app.api.validate_customer",
+        "after_insert": "my_app.api.create_customer_portal_user",
+        "on_trash": "my_app.api.check_customer_transactions"
+    },
+    "*": {
+        "on_update": "my_app.api.log_all_updates",
+        "before_save": "my_app.api.add_modified_by"
+    }
+}
+```
+
+```python
+# my_app/api.py
+import frappe
+
+def validate_customer(doc, method):
+    if not doc.tax_id and doc.customer_type == "Company":
+        frappe.throw("Tax ID is required for company customers")
+
+def create_customer_portal_user(doc, method):
+    if doc.email and not frappe.db.exists("User", doc.email):
+        # Create portal user
+        user = frappe.get_doc({
+            "doctype": "User",
+            "email": doc.email,
+            "first_name": doc.customer_name,
+            "user_type": "Website User"
+        })
+        user.insert(ignore_permissions=True)
+
+def log_all_updates(doc, method):
+    # Log all document updates
+    frappe.log_error(f"Document {doc.doctype} {doc.name} updated")
+```
+
+### Request hooks
+
+Intercept HTTP requests:
+
+```python
+# hooks.py
+before_request = ["my_app.api.log_request"]
+after_request = ["my_app.api.add_custom_header"]
+```
+
+### Scheduler events
+
+Schedule background tasks:
+
+```python
+# hooks.py
+scheduler_events = {
+    "hourly": [
+        "my_app.tasks.sync_data"
+    ],
+    "daily": [
+        "my_app.tasks.send_daily_reports"
+    ],
+    "cron": {
+        "0 9 * * *": [  # 9 AM every day
+            "my_app.tasks.morning_task"
+        ]
+    }
+}
+```
+
+## Extending DocType classes
+
+Extend standard DocType controllers with mixins:
+
+```python
+# hooks.py
+extend_doctype_class = {
+    "Customer": "my_app.custom.customer.CustomerExtension"
+}
+```
+
+```python
+# my_app/custom/customer.py
+class CustomerExtension:
+    def validate(self):
+        # This runs in addition to standard validation
+        self.validate_credit_limit()
+    
+    def validate_credit_limit(self):
+        if self.credit_limit and self.credit_limit > 100000:
+            frappe.msgprint("High credit limit requires approval")
+```
+
+## Fixtures
+
+Export customizations as fixtures for version control:
+
+```python
+# hooks.py
+fixtures = [
+    "Custom Field",
+    "Custom Script",
+    {"dt": "Print Format", "filters": [["module", "=", "My App"]]},
+    {"dt": "Role", "filters": [["name", "in", ["Sales Manager", "Sales User"]]]}
+]
+```
+
+Export fixtures:
+
+```bash
+bench --site sitename export-fixtures
+```
+
+This creates JSON files in your app's `fixtures/` directory that can be imported on other sites.
+
+## Property setters
+
+Modify DocType properties without customizing:
+
+```python
+import frappe
+
+def customize_doctype():
+    frappe.make_property_setter({
+        "doctype": "Customer",
+        "fieldname": "customer_name",
+        "property": "read_only",
+        "value": 1,
+        "property_type": "Check"
+    })
+```
+
+## Custom permissions
+
+Define custom permission logic:
+
+```python
+# hooks.py
+permission_query_conditions = {
+    "Customer": "my_app.permissions.get_customer_query_conditions"
+}
+
+has_permission = {
+    "Customer": "my_app.permissions.has_customer_permission"
+}
+```
+
+```python
+# my_app/permissions.py
+import frappe
+
+def get_customer_query_conditions(user):
+    if not user: 
+        user = frappe.session.user
+    
+    if "Sales Manager" in frappe.get_roles(user):
+        # Sales managers see all customers
+        return None
+    
+    # Sales users see only assigned customers
+    return f"""(`tabCustomer`.`owner` = {frappe.db.escape(user)} 
+                 OR `tabCustomer`.`account_manager` = {frappe.db.escape(user)})"""
+
+def has_customer_permission(doc, user):
+    if "Sales Manager" in frappe.get_roles(user):
+        return True
+    
+    return doc.owner == user or doc.account_manager == user
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use hooks over monkey patching">
+    Prefer documented hooks over directly modifying framework code. Hooks are upgrade-safe.
+  </Accordion>
+
+  <Accordion title="Create custom apps for major customizations">
+    For significant changes, create a custom app instead of modifying standard apps.
+  </Accordion>
+
+  <Accordion title="Export fixtures regularly">
+    Version control your customizations by exporting fixtures after changes.
+  </Accordion>
+
+  <Accordion title="Document your customizations">
+    Add comments explaining why customizations were made.
+  </Accordion>
+
+  <Accordion title="Test thoroughly">
+    Test customizations on staging before deploying to production.
+  </Accordion>
+</AccordionGroup>

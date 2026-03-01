@@ -1,0 +1,294 @@
+---
+title: Email
+description: Send and receive emails with Frappe's email system including queuing, templates, and automated processing
+---
+
+Frappe Framework provides a comprehensive email system for sending and receiving emails, with support for queuing, templates, attachments, and automated processing.
+
+## Sending emails
+
+Send emails using the `sendmail` function:
+
+```python
+import frappe
+
+frappe.sendmail(
+    recipients=["user@example.com"],
+    subject="Welcome to Frappe",
+    message="<p>Hello! Welcome to our application.</p>",
+    delayed=True
+)
+```
+
+### Email parameters
+
+- `recipients`: List of email addresses
+- `subject`: Email subject line
+- `message`: HTML email body
+- `sender`: Sender email address (optional)
+- `cc`: CC recipients (optional)
+- `bcc`: BCC recipients (optional)
+- `attachments`: List of file attachments (optional)
+- `delayed`: Queue email for background processing (optional)
+- `reference_doctype`: DocType for tracking (optional)
+- `reference_name`: Document name for tracking (optional)
+
+## Email queue
+
+Emails are queued for background processing to improve performance:
+
+```python
+def flush():
+    """Flush email queue - called from scheduler"""
+    from frappe.email.doctype.email_queue.email_queue import EmailQueue
+    
+    # Check if queue is suspended
+    if cint(frappe.db.get_default("suspend_email_queue")) == 1:
+        return
+    
+    email_queue_batch = get_queue()
+    
+    for row in email_queue_batch:
+        try:
+            email_queue = frappe.get_doc("Email Queue", row.name, for_update=True)
+            email_queue.send()
+        except Exception:
+            frappe.get_doc("Email Queue", row.name).log_error()
+```
+
+### Queue configuration
+
+Configure email queue settings:
+
+```python
+# In site_config.json
+{
+    "email_queue_batch_size": 500,
+    "email_retry_limit": 3
+}
+```
+
+## Email templates
+
+Create reusable email templates:
+
+```python
+# Get email template
+template = frappe.get_doc("Email Template", "Welcome Email")
+
+# Render template with context
+context = {
+    "user_name": "John Doe",
+    "company": "Acme Corp"
+}
+
+message = frappe.render_template(template.response, context)
+
+frappe.sendmail(
+    recipients=["user@example.com"],
+    subject=template.subject,
+    message=message
+)
+```
+
+## Email attachments
+
+Attach files to emails:
+
+```python
+import frappe
+
+# Attach file from File DocType
+frappe.sendmail(
+    recipients=["user@example.com"],
+    subject="Invoice",
+    message="Please find attached invoice.",
+    attachments=[{
+        "fname": "invoice.pdf",
+        "fcontent": file_content
+    }]
+)
+
+# Attach PDF of a document
+frappe.sendmail(
+    recipients=["user@example.com"],
+    subject="Sales Order",
+    message="Your sales order",
+    attachments=[frappe.attach_print(
+        "Sales Order",
+        "SO-001",
+        print_format="Standard"
+    )]
+)
+```
+
+## Receiving emails
+
+Frappe can receive and process incoming emails:
+
+```python
+from frappe.email.receive import EmailServer
+
+def pull_from_email_account(email_account):
+    """Pull emails from IMAP server"""
+    email_server = EmailServer(frappe.get_doc("Email Account", email_account))
+    
+    # Fetch unread emails
+    emails = email_server.get_messages()
+    
+    for email in emails:
+        # Process each email
+        process_email(email)
+```
+
+### Email account setup
+
+Configure email accounts for receiving:
+
+```python
+email_account = frappe.get_doc({
+    "doctype": "Email Account",
+    "email_id": "support@example.com",
+    "email_account_name": "Support",
+    "enable_incoming": 1,
+    "email_server": "imap.gmail.com",
+    "use_ssl": 1,
+    "username": "support@example.com",
+    "password": "your_password"
+}).insert()
+```
+
+## Email notifications
+
+Set up automated email notifications:
+
+```python
+# In DocType's controller
+class Task(Document):
+    def on_update(self):
+        # Send notification when status changes
+        if self.has_value_changed("status"):
+            self.send_status_notification()
+    
+    def send_status_notification(self):
+        frappe.sendmail(
+            recipients=[self.assigned_to],
+            subject=f"Task {self.name} status updated",
+            message=f"Task status changed to {self.status}",
+            reference_doctype=self.doctype,
+            reference_name=self.name
+        )
+```
+
+## Email alerts
+
+Create email alerts triggered by document events:
+
+```python
+# Email Alert configuration
+email_alert = frappe.get_doc({
+    "doctype": "Email Alert",
+    "subject": "New Task Assigned",
+    "document_type": "Task",
+    "event": "New",
+    "recipients": [
+        {"email_by_document_field": "assigned_to"}
+    ],
+    "message": "You have been assigned a new task: {{ doc.subject }}"
+}).insert()
+```
+
+## Email tracking
+
+Track sent emails and responses:
+
+```python
+# Get emails sent for a document
+emails = frappe.get_all(
+    "Communication",
+    filters={
+        "reference_doctype": "Sales Order",
+        "reference_name": "SO-001",
+        "communication_type": "Communication"
+    },
+    fields=["subject", "content", "creation", "sender"]
+)
+```
+
+## Email statistics
+
+Get email sending statistics:
+
+```python
+from frappe.email.queue import get_emails_sent_today, get_emails_sent_this_month
+
+# Get count of emails sent today
+today_count = get_emails_sent_today(email_account="Gmail")
+
+# Get count of emails sent this month
+month_count = get_emails_sent_this_month(email_account="Gmail")
+```
+
+## Unsubscribe handling
+
+Handle email unsubscribe requests:
+
+```python
+from frappe.email.queue import get_unsubscribe_message
+
+# Add unsubscribe link to emails
+unsubscribe_msg = get_unsubscribe_message(
+    unsubscribe_message="Click here to unsubscribe",
+    expose_recipients="footer"
+)
+
+frappe.sendmail(
+    recipients=["user@example.com"],
+    subject="Newsletter",
+    message=message + unsubscribe_msg.html,
+    reference_doctype="Newsletter",
+    reference_name="NEWS-001"
+)
+```
+
+## SMTP configuration
+
+Configure SMTP settings for outgoing emails:
+
+```python
+# In Email Domain or Email Account
+email_account = frappe.get_doc({
+    "doctype": "Email Account",
+    "email_id": "noreply@example.com",
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "use_tls": 1,
+    "login_id": "noreply@example.com",
+    "password": "your_app_password"
+}).insert()
+```
+
+## Retry failed emails
+
+Retry emails that failed to send:
+
+```python
+from frappe.email.queue import retry_sending_emails
+
+# Retry emails stuck in 'Sending' status
+retry_sending_emails()
+```
+
+## Email rate limiting
+
+Limit email sending rate to avoid spam:
+
+```python
+# In Email Account settings
+email_account.max_emails_per_day = 500
+email_account.save()
+
+# Check if limit exceeded
+if get_emails_sent_today(email_account.name) >= email_account.max_emails_per_day:
+    frappe.throw("Daily email limit exceeded")
+```

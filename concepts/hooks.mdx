@@ -1,0 +1,587 @@
+---
+title: Hook system
+description: Extending Frappe with hooks for events, permissions, and custom behavior
+---
+
+Hooks are Frappe's mechanism for extending and customizing application behavior without modifying core code. They allow you to intercept document events, add custom permissions, override methods, and integrate with the framework lifecycle.
+
+## Overview
+
+Hooks are defined in your app's `hooks.py` file and are automatically executed at specific points in the application lifecycle:
+
+```python
+# hooks.py in your custom app
+app_name = "my_app"
+app_title = "My Application"
+
+# Document event hooks
+doc_events = {
+    "Sales Order": {
+        "on_submit": "my_app.api.create_delivery_note",
+        "on_cancel": "my_app.api.cancel_delivery_note"
+    },
+    "*": {  # All doctypes
+        "on_update": "my_app.api.log_changes"
+    }
+}
+
+# Permission hooks
+has_permission = {
+    "Sales Order": "my_app.permissions.sales_order_permission"
+}
+
+# Override whitelisted methods
+override_whitelisted_methods = {
+    "frappe.desk.search.search_link": "my_app.api.custom_search_link"
+}
+```
+
+## Document event hooks
+
+Document events are triggered during the document lifecycle:
+
+### Standard document events
+
+```python
+doc_events = {
+    "Customer": {
+        # Before save operations
+        "before_insert": "my_app.customer.before_customer_insert",
+        "before_save": "my_app.customer.before_customer_save",
+        "before_submit": "my_app.customer.before_customer_submit",
+        "before_cancel": "my_app.customer.before_customer_cancel",
+        
+        # Validation
+        "validate": "my_app.customer.validate_customer",
+        
+        # After save operations
+        "after_insert": "my_app.customer.after_customer_insert",
+        "on_update": "my_app.customer.on_customer_update",
+        "on_submit": "my_app.customer.on_customer_submit",
+        "on_cancel": "my_app.customer.on_customer_cancel",
+        "on_update_after_submit": "my_app.customer.update_after_submit",
+        
+        # Other events
+        "on_trash": "my_app.customer.on_customer_trash",
+        "after_delete": "my_app.customer.after_customer_delete",
+        "on_change": "my_app.customer.on_customer_change",
+        "after_rename": "my_app.customer.after_customer_rename"
+    }
+}
+```
+
+### Event handler implementation
+
+```python
+# my_app/customer.py
+import frappe
+
+def after_customer_insert(doc, method=None):
+    """Called after a new Customer is inserted"""
+    # Create welcome email
+    frappe.sendmail(
+        recipients=doc.email_id,
+        subject='Welcome to our platform',
+        message='Thank you for joining us!'
+    )
+
+def on_customer_update(doc, method=None):
+    """Called after Customer is updated"""
+    # Update related documents
+    if doc.has_value_changed('territory'):
+        update_sales_orders(doc)
+
+def before_customer_submit(doc, method=None):
+    """Called before Customer is submitted"""
+    # Additional validation
+    if not doc.tax_id:
+        frappe.throw('Tax ID is required before submission')
+```
+
+### Wildcard hooks
+
+Apply hooks to all DocTypes:
+
+```python
+doc_events = {
+    "*": {
+        "on_update": [
+            "my_app.audit.log_document_change",
+            "my_app.sync.sync_to_external_system"
+        ],
+        "on_trash": "my_app.audit.log_deletion"
+    }
+}
+```
+
+<Note>
+Wildcard hooks run for every document operation and should be used carefully to avoid performance impact.
+</Note>
+
+## Permission hooks
+
+### has_permission
+
+Custom document-level permission logic:
+
+```python
+# hooks.py
+has_permission = {
+    "Sales Order": "my_app.permissions.sales_order_permission",
+    "Project": "my_app.permissions.project_permission"
+}
+
+# my_app/permissions.py
+import frappe
+
+def sales_order_permission(doc, ptype='read', user=None, debug=False):
+    """Custom permission check for Sales Order"""
+    if not user:
+        user = frappe.session.user
+    
+    # System Manager has full access
+    if 'System Manager' in frappe.get_roles(user):
+        return True
+    
+    # Sales Manager can access all
+    if 'Sales Manager' in frappe.get_roles(user):
+        return True
+    
+    # Sales Person can only access their territory
+    if 'Sales Person' in frappe.get_roles(user):
+        user_territory = frappe.db.get_value(
+            'Sales Person',
+            {'user': user},
+            'territory'
+        )
+        if user_territory and doc.territory == user_territory:
+            return True
+    
+    # Owner can read their own documents
+    if ptype == 'read' and doc.owner == user:
+        return True
+    
+    return False
+```
+
+### permission_query_conditions
+
+Filter list queries based on permissions:
+
+```python
+# hooks.py
+permission_query_conditions = {
+    "Sales Order": "my_app.permissions.get_sales_order_conditions"
+}
+
+# my_app/permissions.py
+def get_sales_order_conditions(user):
+    """Return SQL WHERE conditions for Sales Order list"""
+    if not user:
+        user = frappe.session.user
+    
+    roles = frappe.get_roles(user)
+    
+    if 'System Manager' in roles or 'Sales Manager' in roles:
+        return ''  # No restrictions
+    
+    if 'Sales Person' in roles:
+        territories = frappe.get_all(
+            'Sales Person',
+            filters={'user': user},
+            pluck='territory'
+        )
+        if territories:
+            territory_list = "', '".join(territories)
+            return f"(`tabSales Order`.territory IN ('{territory_list}'))"
+    
+    return '1=0'  # No access
+```
+
+### has_website_permission
+
+Permissions for website/portal views:
+
+```python
+# hooks.py
+has_website_permission = {
+    "Project": "my_app.permissions.project_website_permission"
+}
+
+# my_app/permissions.py
+def project_website_permission(doc, ptype='read', user=None):
+    """Permission check for portal users"""
+    if not user:
+        user = frappe.session.user
+    
+    # Check if user is project team member
+    team_members = [d.user for d in doc.team_members]
+    return user in team_members
+```
+
+## Request lifecycle hooks
+
+### before_request
+
+Run code before processing each request:
+
+```python
+# hooks.py
+before_request = [
+    "my_app.middleware.log_request",
+    "my_app.middleware.check_maintenance_mode"
+]
+
+# my_app/middleware.py
+import frappe
+
+def log_request():
+    """Log all incoming requests"""
+    frappe.log(f"Request: {frappe.request.method} {frappe.request.path}")
+
+def check_maintenance_mode():
+    """Block requests during maintenance"""
+    if frappe.conf.get('maintenance_mode'):
+        frappe.throw('System is under maintenance', exc=frappe.ValidationError)
+```
+
+### after_request
+
+```python
+before_request = [
+    "my_app.middleware.add_custom_headers"
+]
+
+def add_custom_headers():
+    """Add custom headers to response"""
+    if hasattr(frappe.local, 'response'):
+        frappe.local.response.headers['X-Custom-Header'] = 'value'
+```
+
+## Scheduler hooks
+
+Schedule background jobs:
+
+```python
+# hooks.py
+scheduler_events = {
+    # Cron format
+    "cron": {
+        # Every 15 minutes
+        "0/15 * * * *": [
+            "my_app.tasks.sync_data"
+        ],
+        # Every day at 2 AM
+        "0 2 * * *": [
+            "my_app.tasks.generate_reports"
+        ]
+    },
+    
+    # Named schedules
+    "hourly": [
+        "my_app.tasks.cleanup_temp_files"
+    ],
+    "daily": [
+        "my_app.tasks.send_daily_digest"
+    ],
+    "weekly": [
+        "my_app.tasks.weekly_backup"
+    ],
+    "monthly": [
+        "my_app.tasks.archive_old_records"
+    ],
+    
+    # All schedules (runs on every scheduler tick)
+    "all": [
+        "my_app.tasks.process_queue"
+    ]
+}
+```
+
+<Warning>
+"all" scheduler hooks run very frequently (every few minutes) and should be used sparingly.
+</Warning>
+
+## Override hooks
+
+### override_whitelisted_methods
+
+Replace standard API methods:
+
+```python
+# hooks.py
+override_whitelisted_methods = {
+    "frappe.desk.search.search_link": "my_app.search.custom_search_link",
+    "frappe.client.get": "my_app.api.custom_get"
+}
+
+# my_app/search.py
+import frappe
+
+@frappe.whitelist()
+def custom_search_link(doctype, txt, **kwargs):
+    """Custom search implementation"""
+    # Custom search logic
+    results = frappe.get_all(
+        doctype,
+        filters={'name': ['like', f'%{txt}%']},
+        fields=['name', 'title'],
+        limit=20
+    )
+    return results
+```
+
+### override_doctype_class
+
+Extend standard DocType controllers:
+
+```python
+# hooks.py
+override_doctype_class = {
+    "User": "my_app.overrides.user.CustomUser"
+}
+
+# my_app/overrides/user.py
+from frappe.core.doctype.user.user import User
+
+class CustomUser(User):
+    def validate(self):
+        super().validate()
+        # Additional validation
+        self.validate_company_email()
+    
+    def validate_company_email(self):
+        if not self.email.endswith('@mycompany.com'):
+            frappe.throw('Only company emails are allowed')
+```
+
+## Installation hooks
+
+```python
+# hooks.py
+before_install = "my_app.setup.before_install"
+after_install = "my_app.setup.after_install"
+
+after_app_install = "my_app.setup.post_app_install"
+after_app_uninstall = "my_app.setup.cleanup_app"
+
+before_migrate = "my_app.setup.before_migrate"
+after_migrate = "my_app.setup.after_migrate"
+```
+
+## Jinja hooks
+
+Add custom Jinja methods and filters:
+
+```python
+# hooks.py
+jinja = {
+    "methods": "my_app.jinja_methods.get_methods",
+    "filters": [
+        "my_app.jinja_methods.format_currency",
+        "my_app.jinja_methods.titlecase"
+    ]
+}
+
+# my_app/jinja_methods.py
+def get_methods():
+    return {
+        "get_company_address": get_company_address,
+        "format_phone": format_phone
+    }
+
+def format_currency(value):
+    """Jinja filter to format currency"""
+    return f"${value:,.2f}"
+
+def get_company_address(company):
+    """Jinja method to get company address"""
+    return frappe.db.get_value('Company', company, 'address')
+
+# Usage in Jinja template:
+# {{ 1500.5 | format_currency }}  -> "$1,500.50"
+# {{ get_company_address("My Company") }}
+```
+
+## Website hooks
+
+### Website route rules
+
+```python
+# hooks.py
+website_route_rules = [
+    {"from_route": "/shop/<category>", "to_route": "Product"},
+    {"from_route": "/blog/<post>", "to_route": "Blog Post"}
+]
+```
+
+### Website redirects
+
+```python
+website_redirects = [
+    {
+        "source": r"/old-path/(.*)",
+        "target": r"/new-path/\1",
+        "forward_query_parameters": True
+    }
+]
+```
+
+## Notification hooks
+
+```python
+# hooks.py
+notification_config = "my_app.notifications.get_notification_config"
+
+# my_app/notifications.py
+def get_notification_config():
+    return {
+        "for_doctype": {
+            "Sales Order": {"status": "Open"},
+            "Task": {"status": "Open", "assigned_to": ["me"]}
+        }
+    }
+```
+
+## Boot hooks
+
+Add data to the initial page load (bootinfo):
+
+```python
+# hooks.py
+extend_bootinfo = [
+    "my_app.boot.add_boot_info"
+]
+
+# my_app/boot.py
+import frappe
+
+def add_boot_info(bootinfo):
+    """Add custom data to bootinfo"""
+    bootinfo.custom_settings = frappe.db.get_single_value(
+        'My Settings', 'custom_field'
+    )
+    bootinfo.user_territory = get_user_territory()
+```
+
+## Testing hooks
+
+```python
+# hooks.py
+before_tests = "my_app.tests.setup.before_tests"
+
+# my_app/tests/setup.py
+def before_tests():
+    """Setup test data"""
+    frappe.db.truncate('Custom DocType')
+    create_test_records()
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Keep hooks focused">
+    Each hook function should have a single, clear purpose:
+    
+    ```python
+    # Good: Focused functions
+    def send_welcome_email(doc, method=None):
+        send_email(doc)
+    
+    def create_customer_account(doc, method=None):
+        create_account(doc)
+    
+    # Bad: Doing too much
+    def after_customer_insert(doc, method=None):
+        send_email(doc)
+        create_account(doc)
+        update_dashboard(doc)
+        sync_to_external(doc)
+    ```
+  </Accordion>
+
+  <Accordion title="Handle errors gracefully">
+    ```python
+    def after_customer_insert(doc, method=None):
+        try:
+            send_welcome_email(doc)
+        except Exception as e:
+            frappe.log_error(f"Failed to send welcome email: {str(e)}")
+            # Don't fail the main operation
+    ```
+  </Accordion>
+
+  <Accordion title="Use appropriate hook types">
+    - Use `validate` for validation logic
+    - Use `before_save` for derived field calculations
+    - Use `after_insert` for async operations
+    - Use `on_submit` for creating related documents
+  </Accordion>
+
+  <Accordion title="Document your hooks">
+    ```python
+    def sales_order_permission(doc, ptype='read', user=None, debug=False):
+        """Custom permission for Sales Order.
+        
+        Sales Person can only access orders in their territory.
+        Sales Manager can access all orders.
+        
+        Args:
+            doc: Sales Order document
+            ptype: Permission type (read, write, etc.)
+            user: User to check permission for
+            debug: Enable debug logging
+        
+        Returns:
+            bool: True if user has permission
+        """
+        # Implementation
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Hook execution order
+
+Understanding the order of hook execution:
+
+<Steps>
+  <Step title="Document Insert">
+    1. `before_insert`
+    2. `validate`
+    3. `before_save`
+    4. Database INSERT
+    5. `after_insert`
+    6. `on_update`
+  </Step>
+  <Step title="Document Update">
+    1. `validate`
+    2. `before_save`
+    3. Database UPDATE
+    4. `on_update`
+  </Step>
+  <Step title="Document Submit">
+    1. `validate`
+    2. `before_submit`
+    3. `before_save`
+    4. Database UPDATE
+    5. `on_update`
+    6. `on_submit`
+  </Step>
+</Steps>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Document class" icon="file" href="./document">
+    Learn about document lifecycle
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Understand permission system
+  </Card>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Learn about DocType metadata
+  </Card>
+  <Card title="Routing" icon="route" href="./routing">
+    Understand web routing
+  </Card>
+</CardGroup>

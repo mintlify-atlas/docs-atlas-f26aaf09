@@ -1,0 +1,211 @@
+---
+title: REST API
+description: Frappe Framework provides a powerful REST API for interacting with your application
+---
+
+Frappe Framework includes a comprehensive REST API that allows you to interact with any DocType in your application. The API supports multiple versions and provides both resource-based and method-based endpoints.
+
+## API versions
+
+Frappe API is versioned using the URL path:
+
+- **v1**: `/api/v1/*` (default)
+- **v2**: `/api/v2/*`
+
+You can also use `/api/*` which defaults to v1 for backward compatibility.
+
+## Authentication
+
+The API supports multiple authentication methods:
+
+### API Key and Secret
+
+You can authenticate using API keys in the Authorization header:
+
+```bash
+# Basic authentication
+curl -X GET \
+  https://your-site.com/api/resource/User \
+  -H 'Authorization: Basic base64(api_key:api_secret)'
+
+# Token authentication
+curl -X GET \
+  https://your-site.com/api/resource/User \
+  -H 'Authorization: token api_key:api_secret'
+```
+
+### OAuth 2.0
+
+Frappe supports OAuth 2.0 Bearer token authentication:
+
+```bash
+curl -X GET \
+  https://your-site.com/api/resource/User \
+  -H 'Authorization: Bearer your_access_token'
+```
+
+## Resource endpoints
+
+Resource endpoints allow you to perform CRUD operations on any DocType.
+
+### List documents
+
+Get a list of documents with optional filters:
+
+```bash
+GET /api/resource/{doctype}
+```
+
+Example:
+
+```python
+import requests
+
+url = "https://your-site.com/api/resource/Task"
+params = {
+    "fields": '["name", "subject", "status"]',
+    "filters": '[["Task", "status", "=", "Open"]]',
+    "limit_page_length": 20,
+    "limit_start": 0
+}
+
+response = requests.get(url, params=params, headers=headers)
+data = response.json()
+```
+
+### Get a document
+
+Retrieve a specific document:
+
+```bash
+GET /api/resource/{doctype}/{name}
+```
+
+Example:
+
+```python
+import frappe
+
+@frappe.whitelist()
+def get_task(name):
+    return frappe.get_doc("Task", name)
+```
+
+### Create a document
+
+Create a new document:
+
+```bash
+POST /api/resource/{doctype}
+```
+
+Example:
+
+```python
+import requests
+import json
+
+url = "https://your-site.com/api/resource/Task"
+data = {
+    "subject": "New Task",
+    "status": "Open",
+    "priority": "High"
+}
+
+response = requests.post(url, json=data, headers=headers)
+```
+
+### Update a document
+
+Update an existing document:
+
+```bash
+PUT /api/resource/{doctype}/{name}
+```
+
+Example:
+
+```python
+import requests
+
+url = "https://your-site.com/api/resource/Task/TASK-001"
+data = {
+    "status": "Completed"
+}
+
+response = requests.put(url, json=data, headers=headers)
+```
+
+### Delete a document
+
+Delete a document:
+
+```bash
+DELETE /api/resource/{doctype}/{name}
+```
+
+Example:
+
+```python
+import requests
+
+url = "https://your-site.com/api/resource/Task/TASK-001"
+response = requests.delete(url, headers=headers)
+```
+
+## Method endpoints
+
+Call whitelisted methods using the method endpoint:
+
+```bash
+POST /api/method/{method_path}
+```
+
+Example:
+
+```python
+import frappe
+
+@frappe.whitelist()
+def get_open_tasks():
+    return frappe.get_all("Task", filters={"status": "Open"})
+```
+
+Call it via API:
+
+```bash
+POST /api/method/myapp.api.get_open_tasks
+```
+
+## API logging
+
+You can enable API request logging in System Settings:
+
+```python
+frappe.get_system_settings("log_api_requests")
+```
+
+When enabled, all API requests are logged to the API Request Log DocType.
+
+## Error handling
+
+The API returns standard HTTP status codes:
+
+- `200 OK`: Successful request
+- `201 Created`: Resource created successfully
+- `202 Accepted`: Request accepted (e.g., delete operation)
+- `400 Bad Request`: Invalid request
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Resource not found
+- `500 Internal Server Error`: Server error
+
+Error responses include a JSON object with error details:
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "You don't have permission to access this resource",
+  "_server_messages": "[...]"
+}
+```

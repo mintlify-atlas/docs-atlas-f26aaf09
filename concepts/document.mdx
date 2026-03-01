@@ -1,0 +1,500 @@
+---
+title: Document class
+description: Understanding the Document class and document lifecycle in Frappe
+---
+
+The `Document` class is the base class for all document instances in Frappe. It provides the core functionality for creating, reading, updating, and deleting documents, along with a rich lifecycle system.
+
+## Overview
+
+Every record in Frappe is an instance of the `Document` class or a subclass thereof. Documents inherit behavior from their DocType metadata and can have custom controllers for business logic.
+
+```python
+# Get an existing document
+user = frappe.get_doc('User', 'admin@example.com')
+
+# Create a new document
+todo = frappe.get_doc({
+    'doctype': 'ToDo',
+    'description': 'Complete the task',
+    'priority': 'High'
+})
+```
+
+## Getting documents
+
+### Loading from database
+
+```python
+# Get by DocType and name
+doc = frappe.get_doc('Sales Order', 'SO-0001')
+
+# Get Single DocType
+settings = frappe.get_doc('System Settings')
+
+# Get with permission check
+doc = frappe.get_doc('Sales Order', 'SO-0001', check_permission='read')
+
+# Get for update (with row-level lock)
+doc = frappe.get_doc('Sales Order', 'SO-0001', for_update=True)
+```
+
+### Creating new documents
+
+```python
+# Using dictionary
+doc = frappe.get_doc({
+    'doctype': 'Customer',
+    'customer_name': 'John Doe',
+    'customer_type': 'Individual'
+})
+
+# Using frappe.new_doc (recommended for new documents)
+doc = frappe.new_doc('Customer')
+doc.customer_name = 'John Doe'
+doc.customer_type = 'Individual'
+
+# With child tables
+sales_order = frappe.new_doc('Sales Order')
+sales_order.customer = 'CUST-001'
+sales_order.append('items', {
+    'item_code': 'ITEM-001',
+    'qty': 10,
+    'rate': 100
+})
+```
+
+<Note>
+Use `frappe.new_doc()` instead of `frappe.get_doc({})` for new documents as it properly sets default values and flags.
+</Note>
+
+## Document lifecycle
+
+### Standard lifecycle methods
+
+Documents go through a well-defined lifecycle with hooks at each stage:
+
+```python
+class MyDocType(Document):
+    def before_insert(self):
+        """Called before document is inserted into database"""
+        self.validate_custom_logic()
+    
+    def validate(self):
+        """Called during insert and save. Validate document data"""
+        if not self.title:
+            frappe.throw('Title is required')
+    
+    def before_save(self):
+        """Called before saving (insert or update)"""
+        self.update_derived_fields()
+    
+    def after_insert(self):
+        """Called after document is inserted"""
+        self.send_notification()
+    
+    def on_update(self):
+        """Called after document is updated (insert or save)"""
+        self.update_related_documents()
+    
+    def on_submit(self):
+        """Called when document is submitted (docstatus = 1)"""
+        self.create_ledger_entries()
+    
+    def on_cancel(self):
+        """Called when document is cancelled (docstatus = 2)"""
+        self.reverse_ledger_entries()
+    
+    def on_trash(self):
+        """Called before document is deleted"""
+        self.cleanup_references()
+    
+    def after_delete(self):
+        """Called after document is deleted"""
+        self.notify_deletion()
+```
+
+### Document lifecycle flow
+
+<Steps>
+  <Step title="Insert">
+    1. `before_insert()`
+    2. `validate()`
+    3. `before_save()`
+    4. Database INSERT
+    5. `after_insert()`
+    6. `on_update()`
+  </Step>
+  <Step title="Update">
+    1. `validate()`
+    2. `before_save()`
+    3. Database UPDATE
+    4. `on_update()`
+  </Step>
+  <Step title="Submit">
+    1. `validate()`
+    2. `before_submit()`
+    3. `before_save()`
+    4. Database UPDATE (docstatus = 1)
+    5. `on_update()`
+    6. `on_submit()`
+  </Step>
+  <Step title="Delete">
+    1. `on_trash()`
+    2. Database DELETE
+    3. `after_delete()`
+  </Step>
+</Steps>
+
+## CRUD operations
+
+### Insert
+
+```python
+doc = frappe.new_doc('ToDo')
+doc.description = 'My task'
+
+# Insert with options
+doc.insert(
+    ignore_permissions=False,  # Check permissions
+    ignore_links=False,        # Validate link fields
+    ignore_if_duplicate=False, # Skip if duplicate
+    ignore_mandatory=False     # Validate mandatory fields
+)
+```
+
+### Save
+
+```python
+# Load existing document
+doc = frappe.get_doc('ToDo', 'TODO-0001')
+
+# Modify
+doc.status = 'Closed'
+
+# Save
+doc.save(
+    ignore_permissions=False,
+    ignore_version=False  # Don't track version changes
+)
+```
+
+### Submit and Cancel
+
+For submittable DocTypes (docstatus workflow):
+
+```python
+# Submit (docstatus = 1)
+doc = frappe.get_doc('Sales Order', 'SO-0001')
+doc.submit()
+
+# Cancel (docstatus = 2)
+doc.cancel()
+
+# Amend (create amendment from cancelled)
+amended_doc = frappe.copy_doc(doc)
+amended_doc.amended_from = doc.name
+amended_doc.docstatus = 0
+amended_doc.insert()
+```
+
+### Delete
+
+```python
+# Delete from Document instance
+doc = frappe.get_doc('ToDo', 'TODO-0001')
+doc.delete()
+
+# Delete using frappe.delete_doc
+frappe.delete_doc('ToDo', 'TODO-0001', 
+    ignore_permissions=False,
+    force=False  # Delete even if linked
+)
+```
+
+## Working with document data
+
+### Accessing fields
+
+```python
+doc = frappe.get_doc('User', 'user@example.com')
+
+# Dictionary-style access
+name = doc.get('full_name')
+doc.set('full_name', 'John Doe')
+
+# Attribute access
+name = doc.full_name
+doc.full_name = 'John Doe'
+
+# Get with default
+phone = doc.get('phone', 'Not provided')
+```
+
+### Child tables
+
+```python
+# Accessing child table
+sales_order = frappe.get_doc('Sales Order', 'SO-0001')
+
+# Iterate
+for item in sales_order.items:
+    print(f"{item.item_code}: {item.qty}")
+
+# Add row
+sales_order.append('items', {
+    'item_code': 'ITEM-002',
+    'qty': 5,
+    'rate': 150
+})
+
+# Remove row
+sales_order.remove(sales_order.items[0])
+
+# Get all children
+all_children = sales_order.get_all_children()
+```
+
+### Checking changes
+
+```python
+# Check if field changed
+if doc.has_value_changed('status'):
+    old_value = doc.get_value_before_save('status')
+    new_value = doc.status
+    print(f"Status changed from {old_value} to {new_value}")
+
+# Get document before save
+old_doc = doc.get_doc_before_save()
+```
+
+## Document properties
+
+### Standard fields
+
+Every document has these standard fields:
+
+```python
+print(doc.name)          # Document name (primary key)
+print(doc.owner)         # User who created the document
+print(doc.creation)      # Creation timestamp
+print(doc.modified)      # Last modified timestamp
+print(doc.modified_by)   # User who last modified
+print(doc.docstatus)     # 0: Draft, 1: Submitted, 2: Cancelled
+print(doc.idx)           # Index (for child documents)
+```
+
+### DocStatus
+
+```python
+from frappe.model.docstatus import DocStatus
+
+# Check document status
+if doc.docstatus.is_draft():
+    print("Document is draft")
+
+if doc.docstatus.is_submitted():
+    print("Document is submitted")
+
+if doc.docstatus.is_cancelled():
+    print("Document is cancelled")
+
+# Set docstatus
+doc.docstatus = DocStatus.DRAFT      # 0
+doc.docstatus = DocStatus.SUBMITTED  # 1
+doc.docstatus = DocStatus.CANCELLED  # 2
+```
+
+## Permissions and validation
+
+### Permission checks
+
+```python
+# Check permission
+if doc.has_permission('write'):
+    doc.status = 'Completed'
+    doc.save()
+
+# Explicit permission check (raises exception)
+doc.check_permission('submit')
+
+# Check specific permission types
+doc.has_permission('read')
+doc.has_permission('write')
+doc.has_permission('create')
+doc.has_permission('delete')
+doc.has_permission('submit')
+doc.has_permission('cancel')
+```
+
+### Validation
+
+```python
+class SalesOrder(Document):
+    def validate(self):
+        """Validate document before save"""
+        self.validate_customer()
+        self.validate_items()
+        self.calculate_totals()
+    
+    def validate_customer(self):
+        if not self.customer:
+            frappe.throw('Customer is required')
+        
+        # Check if customer is active
+        if frappe.db.get_value('Customer', self.customer, 'disabled'):
+            frappe.throw('Customer is disabled')
+    
+    def validate_items(self):
+        if not self.items:
+            frappe.throw('Please add at least one item')
+        
+        for item in self.items:
+            if item.qty <= 0:
+                frappe.throw(f'Quantity must be positive for {item.item_code}')
+```
+
+## Database operations
+
+### Direct database updates
+
+```python
+# Update without triggering full save cycle
+doc.db_set('status', 'Completed', update_modified=True)
+
+# Update multiple fields
+doc.db_set({
+    'status': 'Completed',
+    'completion_date': frappe.utils.today()
+})
+
+# Get value from database (without loading full document)
+status = frappe.db.get_value('ToDo', 'TODO-0001', 'status')
+```
+
+<Warning>
+`db_set()` bypasses validation and controller methods. Use only when you need to skip the full document lifecycle.
+</Warning>
+
+### Reloading
+
+```python
+# Reload document from database
+doc.reload()
+
+# Or
+doc = doc.load_from_db()
+```
+
+## Document flags
+
+Flags control document behavior without modifying data:
+
+```python
+# Ignore permissions
+doc.flags.ignore_permissions = True
+doc.save()
+
+# Ignore validation
+doc.flags.ignore_validate = True
+
+# Ignore mandatory fields
+doc.flags.ignore_mandatory = True
+
+# Ignore link validation
+doc.flags.ignore_links = True
+
+# Custom flags for controller logic
+doc.flags.from_import = True
+if doc.flags.from_import:
+    # Skip certain validations during import
+    pass
+```
+
+## Advanced features
+
+### Document locking
+
+```python
+# Check if document is locked
+if doc.is_locked:
+    frappe.throw('Document is locked for execution')
+
+# Lock document for background processing
+from frappe.utils import file_lock
+
+with file_lock(doc.get_signature()):
+    # Document is locked
+    process_document(doc)
+```
+
+### Versioning
+
+```python
+# Enable version tracking in DocType
+# track_changes = 1
+
+# Versions are automatically created on save
+doc.save()
+
+# Disable version tracking for specific save
+doc.save(ignore_version=True)
+
+# Get document versions
+versions = frappe.get_all('Version',
+    filters={'ref_doctype': doc.doctype, 'docname': doc.name},
+    fields=['*'],
+    order_by='creation desc'
+)
+```
+
+### Document links
+
+```python
+# Get documents linked to this document
+from frappe.desk.form.linked_with import get_linked_docs
+
+linked = get_linked_docs(doc.doctype, doc.name, linkinfo=None)
+
+# Check if document has back links (before cancel)
+from frappe.model.delete_doc import check_if_doc_is_linked
+
+try:
+    check_if_doc_is_linked(doc)
+except frappe.LinkExistsError:
+    print("Cannot cancel: Document has dependent links")
+```
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Use lifecycle methods">
+    Implement business logic in lifecycle methods like `validate()`, `on_submit()`, etc. rather than external functions.
+  </Card>
+  <Card title="Validate early">
+    Validate data in `validate()` method before database operations to provide clear error messages.
+  </Card>
+  <Card title="Check permissions">
+    Always check permissions using `has_permission()` before modifying documents programmatically.
+  </Card>
+  <Card title="Use flags wisely">
+    Document flags are powerful but should be used sparingly and with clear intent.
+  </Card>
+</CardGroup>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Learn about DocType metadata definitions
+  </Card>
+  <Card title="Database layer" icon="database" href="./database">
+    Explore database queries and operations
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Understand the permission system
+  </Card>
+  <Card title="Hooks" icon="webhook" href="./hooks">
+    Extend behavior with hooks
+  </Card>
+</CardGroup>

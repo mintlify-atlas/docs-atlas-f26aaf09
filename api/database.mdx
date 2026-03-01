@@ -1,0 +1,411 @@
+---
+title: Database API
+description: Database operations and query execution with frappe.db
+---
+
+The `frappe.db` object provides methods for database operations including queries, transactions, and value operations.
+
+## Query execution
+
+### sql
+
+Execute a SQL query and fetch all rows.
+
+<ParamField path="query" type="str" required>
+  SQL query to execute
+</ParamField>
+
+<ParamField path="values" type="tuple | list | dict">
+  Values to be escaped and substituted in the query
+</ParamField>
+
+<ParamField path="as_dict" type="bool" default="False">
+  Return results as dictionaries
+</ParamField>
+
+<ParamField path="as_list" type="bool" default="False">
+  Return results as lists
+</ParamField>
+
+<ParamField path="pluck" type="bool" default="False">
+  Return only the first column values
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Print query and execution time
+</ParamField>
+
+<ParamField path="auto_commit" type="bool" default="False">
+  Commit after executing the query
+</ParamField>
+
+<ParamField path="as_iterator" type="bool" default="False">
+  Return an iterator instead of fetching all results at once
+</ParamField>
+
+```python
+# Return customer names as dicts
+frappe.db.sql("select name from tabCustomer", as_dict=True)
+
+# With parameter substitution
+frappe.db.sql("select name from tabCustomer where name like %s", "a%")
+
+# Values as dict
+frappe.db.sql(
+    "select name from tabCustomer where name like %(name)s and owner=%(owner)s",
+    {"name": "a%", "owner": "test@example.com"}
+)
+
+# Pluck single column
+customer_names = frappe.db.sql("select name from tabCustomer", pluck=True)
+```
+
+## Getting values
+
+### get_value
+
+Return a document property or list of properties.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="str | dict">
+  Filters like `{"x": "y"}` or document name. `None` for Single DocType
+</ParamField>
+
+<ParamField path="fieldname" type="str | list" required>
+  Column name or list of column names
+</ParamField>
+
+<ParamField path="as_dict" type="bool" default="False">
+  Return values as dict
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Print the query
+</ParamField>
+
+<ParamField path="for_update" type="bool" default="False">
+  Select row with FOR UPDATE clause
+</ParamField>
+
+```python
+# Get single value
+email = frappe.db.get_value("User", "Administrator", "email")
+
+# Get multiple values
+user_details = frappe.db.get_value(
+    "User",
+    "Administrator",
+    ["email", "full_name"],
+    as_dict=True
+)
+
+# With filters
+first_customer = frappe.db.get_value(
+    "Customer",
+    {"territory": "India"},
+    "name"
+)
+```
+
+### get_single_value
+
+Get a field value from a Single DocType.
+
+<ParamField path="doctype" type="str" required>
+  Single DocType name
+</ParamField>
+
+<ParamField path="fieldname" type="str" required>
+  Field name
+</ParamField>
+
+```python
+# Get system settings value
+app_name = frappe.db.get_single_value("System Settings", "app_name")
+```
+
+### get_all
+
+Get a list of document names matching filters. Does not check permissions.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="dict | list">
+  Filter conditions
+</ParamField>
+
+<ParamField path="fields" type="list | str">
+  Fields to fetch. Default: `["name"]`
+</ParamField>
+
+<ParamField path="order_by" type="str">
+  Sort order. Example: `"creation desc"`
+</ParamField>
+
+<ParamField path="limit_start" type="int">
+  Start index for pagination
+</ParamField>
+
+<ParamField path="limit_page_length" type="int" default="0">
+  Number of records per page. 0 for all records
+</ParamField>
+
+<ParamField path="pluck" type="str">
+  Column name to pluck values from
+</ParamField>
+
+```python
+# Get all customers
+customers = frappe.db.get_all("Customer")
+
+# Get with filters and fields
+active_customers = frappe.db.get_all(
+    "Customer",
+    filters={"disabled": 0},
+    fields=["name", "customer_name", "territory"],
+    order_by="creation desc",
+    limit_page_length=20
+)
+
+# Pluck single field
+customer_names = frappe.db.get_all("Customer", pluck="name")
+```
+
+### get_list
+
+Get a list of documents. Checks permissions.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="dict | list">
+  Filter conditions
+</ParamField>
+
+<ParamField path="fields" type="list | str">
+  Fields to fetch
+</ParamField>
+
+<ParamField path="order_by" type="str">
+  Sort order
+</ParamField>
+
+<ParamField path="limit_start" type="int">
+  Start index for pagination
+</ParamField>
+
+<ParamField path="limit_page_length" type="int" default="20">
+  Number of records per page
+</ParamField>
+
+```python
+# Get list with permission check
+todos = frappe.db.get_list(
+    "ToDo",
+    fields=["name", "description"],
+    filters={"owner": "test@example.com"}
+)
+
+# Filter as list of lists
+recent_todos = frappe.db.get_list(
+    "ToDo",
+    fields="*",
+    filters=[["modified", ">", "2024-01-01"]]
+)
+```
+
+## Setting values
+
+### set_value
+
+Set a field value for a document.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name
+</ParamField>
+
+<ParamField path="fieldname" type="str | dict" required>
+  Field name or dict of field-value pairs
+</ParamField>
+
+<ParamField path="value" type="any">
+  Value to set (not required if fieldname is dict)
+</ParamField>
+
+<ParamField path="update_modified" type="bool" default="True">
+  Update the modified timestamp
+</ParamField>
+
+```python
+# Set single value
+frappe.db.set_value("Customer", "CUST-001", "territory", "India")
+
+# Set multiple values
+frappe.db.set_value(
+    "Customer",
+    "CUST-001",
+    {
+        "territory": "India",
+        "customer_group": "Commercial"
+    }
+)
+```
+
+## Checking existence
+
+### exists
+
+Check if a document exists.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str | dict">
+  Document name or filters
+</ParamField>
+
+<ResponseField name="return" type="str | None">
+  Document name if exists, None otherwise
+</ResponseField>
+
+```python
+# Check by name
+if frappe.db.exists("Customer", "CUST-001"):
+    print("Customer exists")
+
+# Check by filters
+if frappe.db.exists("Customer", {"customer_name": "John Doe"}):
+    print("Customer with this name exists")
+```
+
+## Counting records
+
+### count
+
+Count documents matching filters.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="dict | list">
+  Filter conditions
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Number of matching documents
+</ResponseField>
+
+```python
+# Count all customers
+total_customers = frappe.db.count("Customer")
+
+# Count with filters
+active_customers = frappe.db.count("Customer", {"disabled": 0})
+```
+
+## Transactions
+
+### commit
+
+Commit the current transaction.
+
+```python
+frappe.db.commit()
+```
+
+### rollback
+
+Rollback the current transaction.
+
+```python
+frappe.db.rollback()
+```
+
+### savepoint
+
+Create a savepoint for partial rollback.
+
+<ParamField path="savepoint" type="str" required>
+  Savepoint name
+</ParamField>
+
+```python
+# Create savepoint
+frappe.db.savepoint("my_savepoint")
+
+# Rollback to savepoint
+frappe.db.rollback(save_point="my_savepoint")
+```
+
+## Table operations
+
+### table_exists
+
+Check if a table exists in the database.
+
+<ParamField path="table_name" type="str" required>
+  Table name (use `tab` prefix for DocTypes)
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if table exists
+</ResponseField>
+
+```python
+if frappe.db.table_exists("tabCustomer"):
+    print("Customer table exists")
+```
+
+### get_table_columns
+
+Get the list of column names in a table.
+
+<ParamField path="table_name" type="str" required>
+  Table name
+</ParamField>
+
+<ResponseField name="return" type="list">
+  List of column names
+</ResponseField>
+
+```python
+columns = frappe.db.get_table_columns("tabCustomer")
+```
+
+## Bulk operations
+
+### delete
+
+Delete a document from the database directly (bypasses controller logic).
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="str | dict" required>
+  Document name or filter conditions
+</ParamField>
+
+```python
+# Delete by name
+frappe.db.delete("Customer", "CUST-001")
+
+# Delete by filters
+frappe.db.delete("Customer", {"disabled": 1, "creation": ["<", "2020-01-01"]})
+```
+
+<Warning>
+  Use `frappe.delete_doc()` instead when you need to trigger controller events.
+</Warning>

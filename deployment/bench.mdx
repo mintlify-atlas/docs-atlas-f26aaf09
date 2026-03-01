@@ -1,0 +1,402 @@
+---
+title: 'Bench tool'
+description: 'Manage Frappe sites and applications using the bench CLI'
+---
+
+## Overview
+
+Bench is the command-line interface for managing Frappe Framework installations. It provides tools for creating sites, installing apps, running migrations, and managing development and production environments.
+
+## Installation
+
+Bench can be installed using the official installation script:
+
+```bash
+curl -o install.sh https://raw.githubusercontent.com/frappe/bench/develop/install.sh
+sudo bash install.sh
+```
+
+This script installs:
+- Python dependencies
+- Node.js and npm
+- MariaDB (if not already installed)
+- Redis server
+- The bench CLI tool
+
+<Note>
+The installation script creates a new user called `frappe` and sets up the bench environment in `/home/frappe/frappe-bench`.
+</Note>
+
+For detailed installation steps, visit: https://github.com/frappe/bench
+
+## Creating a bench
+
+Initialize a new bench (Frappe installation):
+
+```bash
+bench init frappe-bench
+cd frappe-bench
+```
+
+This creates a directory structure with:
+- `apps/`: Frappe apps (including framework)
+- `sites/`: Individual site instances
+- `config/`: Configuration files for production services
+- `logs/`: Application and error logs
+
+## Site management
+
+### Create a new site
+
+Create a site with a specific name:
+
+```bash
+bench new-site mysite.localhost
+```
+
+You'll be prompted for:
+- MariaDB root password
+- Administrator password for the site
+
+<Tip>
+Use `.localhost` as the domain suffix for development sites. This works without DNS configuration.
+</Tip>
+
+### List sites
+
+View all sites in your bench:
+
+```bash
+bench --site all list-apps
+```
+
+### Use a specific site
+
+Set a default site to avoid specifying it in every command:
+
+```bash
+bench use mysite.localhost
+```
+
+## Application management
+
+### Get an app
+
+Download and install a Frappe application:
+
+```bash
+# From GitHub
+bench get-app erpnext
+
+# From a specific branch
+bench get-app --branch develop erpnext
+
+# From a custom repository
+bench get-app https://github.com/myorg/myapp
+```
+
+### Install app on site
+
+Install an app on a specific site:
+
+```bash
+bench --site mysite.localhost install-app erpnext
+```
+
+### Uninstall app
+
+Remove an app from a site:
+
+```bash
+bench --site mysite.localhost uninstall-app myapp
+```
+
+## Development workflow
+
+### Start development server
+
+Start all services for development:
+
+```bash
+bench start
+```
+
+This starts:
+- Web server (port 8000)
+- SocketIO server
+- Redis cache
+- Redis queue
+- Background workers
+- Scheduler
+
+<Note>
+Access your site at `http://mysite.localhost:8000` after running `bench start`.
+</Note>
+
+### Watch and rebuild assets
+
+Automatically rebuild frontend assets on changes:
+
+```bash
+bench watch
+```
+
+### Build assets
+
+Manually build production-ready assets:
+
+```bash
+# Build for all sites and apps
+bench build
+
+# Build for specific app
+bench build --app frappe
+```
+
+## Database operations
+
+### Run migrations
+
+Execute database migrations after updates:
+
+```bash
+# Migrate specific site
+bench --site mysite.localhost migrate
+
+# Migrate all sites
+bench --site all migrate
+```
+
+### Console access
+
+Open an interactive Python console with Frappe context:
+
+```bash
+bench --site mysite.localhost console
+```
+
+Example usage:
+```python
+# List all doctypes
+frappe.get_all('DocType')
+
+# Get a document
+doc = frappe.get_doc('User', 'administrator@example.com')
+print(doc.email)
+```
+
+### Database console
+
+Access the MariaDB console directly:
+
+```bash
+bench --site mysite.localhost mariadb
+```
+
+### Backup and restore
+
+Create and restore site backups:
+
+```bash
+# Create backup
+bench --site mysite.localhost backup
+
+# Create backup with files
+bench --site mysite.localhost backup --with-files
+
+# Restore from backup
+bench --site mysite.localhost restore /path/to/backup.sql.gz
+```
+
+## Production setup
+
+### Configure production services
+
+Generate configuration files for nginx and supervisor:
+
+```bash
+# Generate nginx config
+bench setup nginx
+
+# Generate supervisor config
+bench setup supervisor
+
+# Setup production environment
+bench setup production frappe
+```
+
+### Update and migrate
+
+Update bench, apps, and migrate sites:
+
+```bash
+# Update bench CLI
+bench update --pull --patch
+
+# Update specific app
+bench update --apps erpnext
+
+# Update without backup
+bench update --no-backup
+```
+
+<Warning>
+Always backup your sites before running updates in production.
+</Warning>
+
+## Worker management
+
+### Start workers manually
+
+Start background workers for different queues:
+
+```bash
+# Default queue worker
+bench worker --queue default
+
+# Short running jobs
+bench worker --queue short
+
+# Long running jobs  
+bench worker --queue long
+```
+
+### Start scheduler
+
+Run the scheduler for periodic tasks:
+
+```bash
+bench schedule
+```
+
+### Background jobs
+
+Execute Python functions in the background:
+
+```python
+# In your app code
+frappe.enqueue(
+    'myapp.tasks.send_email',
+    queue='default',
+    timeout=300,
+    now=False
+)
+```
+
+## Configuration
+
+### Site configuration
+
+Edit site-specific settings:
+
+```bash
+bench --site mysite.localhost set-config key value
+```
+
+Example:
+```bash
+# Enable developer mode
+bench --site mysite.localhost set-config developer_mode 1
+
+# Set mail server
+bench --site mysite.localhost set-config mail_server "smtp.gmail.com"
+```
+
+### Common site configuration
+
+Settings shared across all sites are stored in `common_site_config.json`:
+
+```bash
+bench config set key value
+```
+
+## Troubleshooting
+
+### Clear cache
+
+Clear site cache to resolve caching issues:
+
+```bash
+bench --site mysite.localhost clear-cache
+```
+
+### Rebuild search index
+
+Reindex search for better search results:
+
+```bash
+bench --site mysite.localhost build-search-index
+```
+
+### Check system health
+
+Diagnose installation and configuration issues:
+
+```bash
+bench doctor
+```
+
+This checks:
+- Background workers status
+- Queue health
+- Configuration validity
+- Port availability
+
+### View logs
+
+```bash
+# Web server logs
+tail -f logs/web.log
+
+# Worker logs  
+tail -f logs/worker.log
+
+# Error logs
+tail -f logs/error.log
+```
+
+## Useful commands
+
+### Execute Python code
+
+Run Python code in the Frappe context:
+
+```bash
+bench --site mysite.localhost execute "frappe.get_all('User')"
+```
+
+### Run tests
+
+Execute unit tests:
+
+```bash
+# Run all tests for an app
+bench --site mysite.localhost run-tests --app frappe
+
+# Run specific test
+bench --site mysite.localhost run-tests frappe.tests.test_api
+```
+
+### Reinstall site
+
+Completely reinstall a site (deletes all data):
+
+```bash
+bench --site mysite.localhost reinstall
+```
+
+<Warning>
+This command drops the database and reinstalls from scratch. All data will be lost.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Configuration options" icon="gear" href="/deployment/configuration">
+  Learn about site_config.json settings
+</Card>
+
+<Card title="Production deployment" icon="server" href="/deployment/production">
+  Deploy Frappe to production
+</Card>
+</CardGroup>

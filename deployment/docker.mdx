@@ -1,0 +1,298 @@
+---
+title: 'Docker deployment'
+description: 'Deploy Frappe Framework using Docker containers'
+---
+
+## Overview
+
+Docker provides a containerized deployment option for Frappe Framework, making it easier to manage dependencies and ensure consistent environments across development and production.
+
+## Prerequisites
+
+Before deploying Frappe with Docker, ensure you have:
+
+- **Docker Engine** (version 20.10 or higher)
+- **Docker Compose** (version 2.0 or higher)
+- **Git** for cloning repositories
+
+<Note>
+Refer to the [Docker documentation](https://docs.docker.com) for installation instructions specific to your operating system.
+</Note>
+
+## Quick start
+
+Get Frappe running with Docker in minutes:
+
+<Steps>
+<Step title="Clone the Frappe Docker repository">
+
+```bash
+git clone https://github.com/frappe/frappe_docker
+cd frappe_docker
+```
+
+</Step>
+
+<Step title="Start the containers">
+
+```bash
+docker compose -f pwd.yml up -d
+```
+
+This command starts all required services including:
+- Frappe application server
+- MariaDB database
+- Redis cache and queue
+- nginx reverse proxy
+
+</Step>
+
+<Step title="Access your site">
+
+After a couple of minutes, your site will be accessible at:
+
+```
+http://localhost:8080
+```
+
+Default login credentials:
+- **Username**: Administrator
+- **Password**: admin
+
+</Step>
+</Steps>
+
+<Warning>
+Change the default password immediately after first login in production environments.
+</Warning>
+
+## ARM64 architecture
+
+For ARM-based systems (like Apple Silicon or ARM servers), follow the special setup instructions:
+
+1. Visit the [Frappe Docker repository](https://github.com/frappe/frappe_docker)
+2. Follow the ARM64-specific instructions in the README
+
+<Note>
+ARM64 images require different base images and may have slightly different build processes.
+</Note>
+
+## Docker compose files
+
+The Frappe Docker repository includes several compose files for different scenarios:
+
+### Development setup
+
+```bash
+# For development with live reload
+docker compose -f compose.yaml up -d
+```
+
+Features:
+- Volume mounts for live code changes
+- Debug mode enabled
+- Development tools included
+
+### Production setup
+
+```bash
+# For production deployments
+docker compose -f compose.prod.yaml up -d
+```
+
+Features:
+- Optimized images
+- Production-ready configuration
+- Multi-worker setup
+
+### Proof of Work (pwd.yml)
+
+```bash
+# Quick test deployment
+docker compose -f pwd.yml up -d
+```
+
+Features:
+- Minimal configuration
+- Fast startup
+- Perfect for testing
+
+## Container architecture
+
+Frappe Docker setup includes these services:
+
+### Application containers
+
+- **frappe-web**: Runs gunicorn for serving HTTP requests
+- **frappe-worker-default**: Processes default queue jobs
+- **frappe-worker-short**: Handles short-running background jobs
+- **frappe-worker-long**: Executes long-running background jobs
+- **frappe-scheduler**: Manages scheduled tasks
+
+### Infrastructure containers
+
+- **mariadb**: Database server for data persistence
+- **redis-cache**: Redis instance for application caching
+- **redis-queue**: Redis instance for job queuing
+- **nginx**: Reverse proxy and static file server
+
+## Managing sites
+
+### Create a new site
+
+Create additional sites in your Docker deployment:
+
+```bash
+docker compose exec frappe-web bench new-site mysite.localhost
+```
+
+### List sites
+
+View all sites in your deployment:
+
+```bash
+docker compose exec frappe-web bench --site all list-apps
+```
+
+### Migrate sites
+
+Run database migrations after updates:
+
+```bash
+docker compose exec frappe-web bench --site mysite.localhost migrate
+```
+
+## Persistent data
+
+Docker volumes ensure data persistence across container restarts:
+
+- **db-data**: Database files
+- **redis-cache-data**: Redis cache data
+- **redis-queue-data**: Redis queue data
+- **sites**: Site files and configurations
+
+<Warning>
+Always back up these volumes before performing major updates or migrations.
+</Warning>
+
+## Updating containers
+
+Update your Frappe Docker deployment:
+
+<Steps>
+<Step title="Pull latest images">
+
+```bash
+docker compose pull
+```
+
+</Step>
+
+<Step title="Recreate containers">
+
+```bash
+docker compose up -d
+```
+
+</Step>
+
+<Step title="Run migrations">
+
+```bash
+docker compose exec frappe-web bench --site all migrate
+```
+
+</Step>
+</Steps>
+
+## Environment configuration
+
+Customize your deployment using environment variables in a `.env` file:
+
+```bash
+# Database configuration
+DB_ROOT_PASSWORD=strong_password
+DB_HOST=mariadb
+DB_PORT=3306
+
+# Site configuration
+SITE_NAME=mysite.localhost
+ADMIN_PASSWORD=secure_password
+
+# Application settings
+DEVELOPER_MODE=0
+```
+
+## Logs and debugging
+
+### View container logs
+
+```bash
+# All containers
+docker compose logs -f
+
+# Specific service
+docker compose logs -f frappe-web
+```
+
+### Execute commands in container
+
+```bash
+# Interactive shell
+docker compose exec frappe-web bash
+
+# Run bench commands
+docker compose exec frappe-web bench --help
+```
+
+## Production considerations
+
+When deploying Docker in production:
+
+1. **Use production compose files**: They include optimized settings
+2. **Set resource limits**: Control memory and CPU usage per container
+3. **Enable restart policies**: Ensure containers restart after failures
+4. **Configure SSL/TLS**: Use Let's Encrypt or other certificate providers
+5. **Monitor containers**: Use tools like Prometheus and Grafana
+6. **Regular backups**: Automate backup of volumes and databases
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Containers won't start">
+  Check Docker logs for errors:
+  ```bash
+  docker compose logs
+  ```
+  
+  Ensure all required ports are available and not in use by other services.
+</Accordion>
+
+<Accordion title="Database connection errors">
+  Verify database container is running:
+  ```bash
+  docker compose ps mariadb
+  ```
+  
+  Check database credentials in environment variables match site configuration.
+</Accordion>
+
+<Accordion title="Permission errors">
+  Ensure proper ownership on mounted volumes:
+  ```bash
+  docker compose exec frappe-web chown -R frappe:frappe /home/frappe/frappe-bench/sites
+  ```
+</Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Bench tool" icon="wrench" href="/deployment/bench">
+  Learn about the bench CLI for site management
+</Card>
+
+<Card title="Configuration" icon="gear" href="/deployment/configuration">
+  Configure your Frappe deployment
+</Card>
+</CardGroup>

@@ -1,0 +1,338 @@
+---
+title: Frappe client
+description: Client-side JavaScript API for making requests and handling events
+---
+
+The Frappe client-side API provides methods for making server requests, managing events, and displaying user messages.
+
+## Making API requests
+
+### frappe.call()
+
+Make a server-side method call from the client.
+
+```javascript
+frappe.call({
+    method: 'frappe.client.get_value',
+    args: {
+        doctype: 'Item',
+        filters: { name: 'ITEM-001' },
+        fieldname: ['item_name', 'item_group']
+    },
+    callback: function(r) {
+        if (r.message) {
+            console.log(r.message);
+        }
+    },
+    error: function(r) {
+        console.error('Request failed');
+    }
+});
+```
+
+<ParamField path="method" type="string" required>
+  Server-side method to call (dot notation path)
+</ParamField>
+
+<ParamField path="args" type="object">
+  Arguments to pass to the server method
+</ParamField>
+
+<ParamField path="callback" type="function">
+  Function called on successful response. Receives response object with `message` property
+</ParamField>
+
+<ParamField path="error" type="function">
+  Function called on error
+</ParamField>
+
+<ParamField path="freeze" type="boolean">
+  Show a loading indicator that prevents user interaction
+</ParamField>
+
+<ParamField path="freeze_message" type="string">
+  Custom message to show during freeze
+</ParamField>
+
+<ParamField path="async" type="boolean">
+  Whether the request should be asynchronous (default: true)
+</ParamField>
+
+<ParamField path="type" type="string">
+  HTTP method type: 'POST' or 'GET' (default: 'POST')
+</ParamField>
+
+### frappe.xcall()
+
+Promise-based wrapper around `frappe.call()` for async/await patterns.
+
+```javascript
+try {
+    const result = await frappe.xcall(
+        'frappe.client.get_value',
+        {
+            doctype: 'Customer',
+            filters: { name: 'CUST-001' },
+            fieldname: 'customer_name'
+        }
+    );
+    console.log(result);
+} catch (error) {
+    console.error(error);
+}
+```
+
+<ParamField path="method" type="string" required>
+  Server-side method to call
+</ParamField>
+
+<ParamField path="params" type="object">
+  Arguments to pass to the server method
+</ParamField>
+
+<ParamField path="type" type="string">
+  HTTP method: 'POST' or 'GET' (default: 'POST')
+</ParamField>
+
+## Database methods
+
+### frappe.db.get_value()
+
+Get a specific field value from a document.
+
+```javascript
+frappe.db.get_value('Item', { name: 'ITEM-001' }, 'item_name', (r) => {
+    console.log(r.item_name);
+});
+```
+
+<ParamField path="doctype" type="string" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="object | string" required>
+  Filters object or document name
+</ParamField>
+
+<ParamField path="fieldname" type="string | array" required>
+  Field name or array of field names to fetch
+</ParamField>
+
+<ParamField path="callback" type="function">
+  Callback function that receives the values
+</ParamField>
+
+### frappe.db.get_list()
+
+Get a list of documents with filtering and pagination.
+
+```javascript
+const items = await frappe.db.get_list('Item', {
+    fields: ['name', 'item_name', 'item_group'],
+    filters: {
+        item_group: 'Products'
+    },
+    limit: 20,
+    order_by: 'item_name asc'
+});
+```
+
+<ParamField path="doctype" type="string" required>
+  DocType name
+</ParamField>
+
+<ParamField path="args" type="object">
+  Query parameters object
+</ParamField>
+
+<ParamField path="args.fields" type="array">
+  Array of field names to fetch (default: ['name'])
+</ParamField>
+
+<ParamField path="args.filters" type="object | array">
+  Filters to apply
+</ParamField>
+
+<ParamField path="args.limit" type="number">
+  Number of records to fetch (default: 20)
+</ParamField>
+
+<ParamField path="args.order_by" type="string">
+  Field to sort by with direction (e.g., 'creation desc')
+</ParamField>
+
+### frappe.db.get_doc()
+
+Get a complete document with all fields.
+
+```javascript
+const doc = await frappe.db.get_doc('Sales Order', 'SO-001');
+console.log(doc);
+```
+
+### frappe.db.set_value()
+
+Set a field value in a document.
+
+```javascript
+frappe.db.set_value('Item', 'ITEM-001', 'item_name', 'New Name', (r) => {
+    console.log('Updated');
+});
+```
+
+### frappe.db.insert()
+
+Insert a new document.
+
+```javascript
+const doc = await frappe.db.insert({
+    doctype: 'ToDo',
+    description: 'New task',
+    status: 'Open'
+});
+```
+
+### frappe.db.delete_doc()
+
+Delete a document.
+
+```javascript
+await frappe.db.delete_doc('ToDo', 'TODO-001');
+```
+
+## Event system
+
+### frappe.on()
+
+Bind an event handler.
+
+```javascript
+frappe.on('form-refresh', function(frm) {
+    console.log('Form refreshed:', frm.doctype);
+});
+```
+
+### frappe.trigger()
+
+Trigger an event.
+
+```javascript
+frappe.trigger('custom-event', { data: 'value' });
+```
+
+### frappe.off()
+
+Unbind an event handler.
+
+```javascript
+frappe.off('form-refresh', handler_function);
+```
+
+## Realtime events
+
+### frappe.realtime.on()
+
+Subscribe to realtime events from the server.
+
+```javascript
+frappe.realtime.on('eval_js', function(data) {
+    console.log('Received realtime event:', data);
+});
+```
+
+### frappe.realtime.emit()
+
+Emit a realtime event to other users.
+
+```javascript
+frappe.realtime.emit('doc_update', {
+    doctype: 'Sales Order',
+    name: 'SO-001'
+});
+```
+
+## User messages
+
+### frappe.msgprint()
+
+Display a message dialog to the user.
+
+```javascript
+frappe.msgprint('Record saved successfully');
+
+// With options
+frappe.msgprint({
+    title: __('Success'),
+    indicator: 'green',
+    message: __('The operation completed successfully')
+});
+```
+
+<ParamField path="message" type="string | object" required>
+  Message to display or options object
+</ParamField>
+
+<ParamField path="title" type="string">
+  Dialog title
+</ParamField>
+
+<ParamField path="indicator" type="string">
+  Color indicator: 'red', 'green', 'blue', 'orange', 'yellow'
+</ParamField>
+
+### frappe.throw()
+
+Throw an error and display it to the user.
+
+```javascript
+frappe.throw(__('Invalid value for field {0}', [fieldname]));
+```
+
+### frappe.show_alert()
+
+Show a temporary alert notification.
+
+```javascript
+frappe.show_alert({
+    message: __('Document updated'),
+    indicator: 'green'
+}, 5);
+```
+
+<ParamField path="message" type="string | object" required>
+  Message to display or options object with message and indicator
+</ParamField>
+
+<ParamField path="seconds" type="number">
+  How long to show the alert (default: 3)
+</ParamField>
+
+### frappe.confirm()
+
+Show a confirmation dialog.
+
+```javascript
+frappe.confirm(
+    'Are you sure you want to delete this record?',
+    function() {
+        // User clicked Yes
+        frappe.db.delete_doc('Item', 'ITEM-001');
+    },
+    function() {
+        // User clicked No
+        console.log('Cancelled');
+    }
+);
+```
+
+<ParamField path="message" type="string" required>
+  Confirmation message
+</ParamField>
+
+<ParamField path="confirm_action" type="function">
+  Function to call when user confirms
+</ParamField>
+
+<ParamField path="reject_action" type="function">
+  Function to call when user rejects
+</ParamField>

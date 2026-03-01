@@ -1,0 +1,435 @@
+---
+title: Site commands
+description: Commands for managing Frappe sites
+---
+
+Site commands allow you to create, manage, and maintain Frappe sites within your bench.
+
+## Create a new site
+
+Create a new Frappe site.
+
+```bash
+bench new-site [sitename]
+```
+
+**Options:**
+- `--db-name` - Database name (defaults to site name with underscores)
+- `--db-password` - Database password
+- `--db-type` - Database type: `mariadb`, `postgres`, or `sqlite` (default: `mariadb`)
+- `--db-host` - Database host
+- `--db-port` - Database port
+- `--db-root-username` - Root username (default: `root`)
+- `--db-root-password` - Root password for database
+- `--db-socket` - Database socket path
+- `--admin-password` - Administrator password
+- `--install-app` - Install app(s) after site creation (can be used multiple times)
+- `--source-sql` - Initialize database from SQL file
+- `--set-default` - Set as default site
+- `--force` - Force creation even if site exists
+- `--verbose` - Verbose output
+
+**Examples:**
+```bash
+# Basic site creation
+$ bench new-site mysite.local
+
+# Create site with custom admin password
+$ bench new-site mysite.local --admin-password "SecurePass123"
+
+# Create site and install apps
+$ bench new-site mysite.local --install-app erpnext --install-app hrms
+
+# Create site as default
+$ bench new-site mysite.local --set-default
+```
+
+## Drop a site
+
+Remove a site from the database and filesystem.
+
+```bash
+bench drop-site [sitename]
+```
+
+**Options:**
+- `--db-root-username` - Root username for database
+- `--db-root-password` - Root password for database
+- `--archived-sites-path` - Custom path for archived sites
+- `--no-backup` - Skip backup before dropping
+- `--force` - Force drop even if errors occur
+
+**Example:**
+```bash
+$ bench drop-site oldsite.local
+Taking backup of oldsite.local
+Dropping site database and user
+Moving site to archive
+```
+
+## Reinstall site
+
+Wipe all data and reinstall a site.
+
+```bash
+bench --site [sitename] reinstall
+```
+
+**Options:**
+- `--admin-password` - Administrator password for reinstalled site
+- `--db-root-username` - Root username
+- `--db-root-password` - Root password
+- `--yes` - Skip confirmation prompt
+
+**Example:**
+```bash
+$ bench --site mysite.local reinstall --yes
+```
+
+<Warning>
+This command will delete all data in the site. Make sure you have a backup!
+</Warning>
+
+## Set default site
+
+Set a site as the default site for the bench.
+
+```bash
+bench use [sitename]
+```
+
+**Example:**
+```bash
+$ bench use mysite.local
+Current Site set to mysite.local
+```
+
+## Install app
+
+Install one or more apps to a site.
+
+```bash
+bench --site [sitename] install-app [app1] [app2] ...
+```
+
+**Options:**
+- `--force` - Force install even if incompatible
+
+**Examples:**
+```bash
+# Install single app
+$ bench --site mysite.local install-app erpnext
+
+# Install multiple apps
+$ bench --site mysite.local install-app erpnext hrms
+```
+
+## Uninstall app
+
+Remove an app and all its modules from a site.
+
+```bash
+bench --site [sitename] uninstall-app [app]
+```
+
+**Options:**
+- `--yes, -y` - Skip confirmation prompt
+- `--dry-run` - List all doctypes that will be deleted
+- `--no-backup` - Skip site backup
+- `--force` - Force uninstall
+
+**Example:**
+```bash
+$ bench --site mysite.local uninstall-app custom_app --dry-run
+```
+
+## List installed apps
+
+List all apps installed on a site.
+
+```bash
+bench --site [sitename] list-apps
+```
+
+**Options:**
+- `-f, --format` - Output format: `text` or `json` (default: `text`)
+
+**Example output:**
+```bash
+$ bench --site mysite.local list-apps
+frappe  15.0.0  main
+erpnext 15.0.0  main
+```
+
+## Migrate site
+
+Run patches, sync schema, and rebuild files/translations.
+
+```bash
+bench --site [sitename] migrate
+```
+
+**Options:**
+- `--skip-failing` - Skip patches that fail
+- `--skip-search-index` - Skip search indexing
+- `--skip-fixtures` - Skip loading fixtures
+
+**Example:**
+```bash
+$ bench --site mysite.local migrate
+Migrating mysite.local
+Running patches...
+Syncing database schema...
+Rebuilding website routes...
+```
+
+## Browse site
+
+Open a site in your web browser.
+
+```bash
+bench --site [sitename] browse
+```
+
+**Options:**
+- `--user` - Login as specific user (requires developer mode)
+- `--session-end` - Session end time (ISO8601 format)
+- `--user-for-audit` - User to mention in audit trail
+
+**Example:**
+```bash
+# Open site in browser
+$ bench --site mysite.local browse
+
+# Login as Administrator (developer mode only)
+$ bench --site mysite.local browse --user Administrator
+```
+
+## Add to hosts
+
+Add site to /etc/hosts file.
+
+```bash
+bench --site [sitename] add-to-hosts
+```
+
+Adds entries for both IPv4 (127.0.0.1) and IPv6 (::1).
+
+## User management
+
+### Add system manager
+
+Add a new system manager to a site.
+
+```bash
+bench --site [sitename] add-system-manager [email]
+```
+
+**Options:**
+- `--first-name` - User's first name
+- `--last-name` - User's last name
+- `--password` - User password
+- `--send-welcome-email` - Send welcome email
+
+**Example:**
+```bash
+$ bench --site mysite.local add-system-manager admin@example.com \
+  --first-name Admin --last-name User
+```
+
+### Add user
+
+Add a new user to a site.
+
+```bash
+bench --site [sitename] add-user [email]
+```
+
+**Options:**
+- `--first-name` - User's first name
+- `--last-name` - User's last name
+- `--password` - User password
+- `--user-type` - User type (e.g., "System User", "Website User")
+- `--add-role` - Add role(s) to user (can be used multiple times)
+- `--send-welcome-email` - Send welcome email
+
+**Example:**
+```bash
+$ bench --site mysite.local add-user user@example.com \
+  --first-name John --last-name Doe \
+  --user-type "System User" \
+  --add-role "Sales User" --add-role "Stock User"
+```
+
+### Disable user
+
+Disable a user account.
+
+```bash
+bench --site [sitename] disable-user [email]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local disable-user olduser@example.com
+```
+
+### Set password
+
+Set or change a user's password.
+
+```bash
+bench --site [sitename] set-password [user] [password]
+```
+
+**Options:**
+- `--logout-all-sessions` - Log out user from all sessions
+
+**Example:**
+```bash
+$ bench --site mysite.local set-password Administrator
+Administrator's password for mysite.local: 
+```
+
+### Set admin password
+
+Set the Administrator password.
+
+```bash
+bench --site [sitename] set-admin-password [password]
+```
+
+**Options:**
+- `--logout-all-sessions` - Log out from all sessions
+
+**Example:**
+```bash
+$ bench --site mysite.local set-admin-password
+Administrator's password for mysite.local:
+```
+
+## Session management
+
+Destroy all user sessions (logs everyone out).
+
+```bash
+bench --site [sitename] destroy-all-sessions
+```
+
+**Options:**
+- `--reason` - Reason for destroying sessions
+
+**Example:**
+```bash
+$ bench --site mysite.local destroy-all-sessions --reason "Security update"
+```
+
+## Publish realtime events
+
+Publish a realtime event from the command line.
+
+```bash
+bench --site [sitename] publish-realtime [event]
+```
+
+**Options:**
+- `--message` - Event message
+- `--room` - Room name
+- `--user` - User to send to
+- `--doctype` - DocType context
+- `--docname` - Document name context
+- `--after-commit` - Publish after commit
+
+**Example:**
+```bash
+$ bench --site mysite.local publish-realtime "custom_event" \
+  --message "Hello" --room "general"
+```
+
+## Recorder
+
+Control the Frappe Recorder for debugging.
+
+### Start recording
+
+```bash
+bench --site [sitename] start-recording
+```
+
+### Stop recording
+
+```bash
+bench --site [sitename] stop-recording
+```
+
+## Ngrok tunnel
+
+Start an ngrok tunnel to your development site.
+
+```bash
+bench --site [sitename] ngrok
+```
+
+**Options:**
+- `--bind-tls` - Return HTTPS tunnel reference
+- `--use-default-authtoken` - Use authtoken from ngrok config
+
+**Example:**
+```bash
+$ bench --site mysite.local ngrok
+Public URL: https://abc123.ngrok.io
+Inspect logs at http://127.0.0.1:4040
+```
+
+You need to add `ngrok_authtoken` to your site_config.json first.
+
+## Advanced commands
+
+### Reload doctype
+
+Reload schema for a specific DocType.
+
+```bash
+bench --site [sitename] reload-doctype [doctype]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local reload-doctype "Sales Order"
+```
+
+### Run patch
+
+Run a specific migration patch.
+
+```bash
+bench --site [sitename] run-patch [module]
+```
+
+**Options:**
+- `--force` - Force run even if already executed
+
+**Example:**
+```bash
+$ bench --site mysite.local run-patch frappe.patches.v15_0.update_user_permissions
+```
+
+### Bypass patch
+
+Bypass a patch permanently without running it.
+
+```bash
+bench --site [sitename] bypass-patch [patch_name]
+```
+
+**Options:**
+- `--yes, -y` - Skip confirmation
+
+**Example:**
+```bash
+$ bench --site mysite.local bypass-patch frappe.patches.v15_0.problematic_patch --yes
+```
+
+<Warning>
+Use this with caution. Only bypass patches if you understand the implications.
+</Warning>

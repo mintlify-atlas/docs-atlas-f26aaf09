@@ -1,0 +1,598 @@
+---
+title: Utility functions
+description: Common utility functions including frappe.throw, frappe.msgprint, and data helpers
+---
+
+Frappe provides a comprehensive set of utility functions for common operations like messaging, error handling, data manipulation, and formatting.
+
+## Messaging and errors
+
+### throw
+
+Raise an exception and show a message to the user.
+
+<ParamField path="msg" type="str" required>
+  Error message to display
+</ParamField>
+
+<ParamField path="exc" type="Exception" default="ValidationError">
+  Exception class to raise
+</ParamField>
+
+<ParamField path="title" type="str">
+  Message title. Default: "Message"
+</ParamField>
+
+<ParamField path="is_minimizable" type="bool" default="False">
+  Allow users to minimize the modal
+</ParamField>
+
+<ParamField path="wide" type="bool" default="False">
+  Show wide modal
+</ParamField>
+
+```python
+# Basic usage
+frappe.throw("Customer name is required")
+
+# With custom exception
+frappe.throw("Access denied", frappe.PermissionError)
+
+# With title
+frappe.throw(
+    "Invalid quantity: must be greater than 0",
+    title="Validation Error"
+)
+
+# Custom exception class
+class StockUnavailable(frappe.ValidationError):
+    pass
+
+frappe.throw(
+    "Item out of stock",
+    exc=StockUnavailable,
+    title="Stock Error"
+)
+```
+
+### msgprint
+
+Display a message to the user without raising an exception.
+
+<ParamField path="msg" type="str" required>
+  Message to display
+</ParamField>
+
+<ParamField path="title" type="str">
+  Message title
+</ParamField>
+
+<ParamField path="raise_exception" type="bool | Exception" default="False">
+  Raise exception after showing message
+</ParamField>
+
+<ParamField path="indicator" type="str">
+  Color indicator: "blue", "green", "orange", "red", "yellow"
+</ParamField>
+
+<ParamField path="alert" type="bool" default="False">
+  Show as toast notification
+</ParamField>
+
+<ParamField path="primary_action" type="dict">
+  Add a primary action button
+</ParamField>
+
+```python
+# Simple message
+frappe.msgprint("Customer updated successfully")
+
+# With title and indicator
+frappe.msgprint(
+    "Customer saved",
+    title="Success",
+    indicator="green"
+)
+
+# As toast notification
+frappe.msgprint(
+    "Changes saved",
+    indicator="green",
+    alert=True
+)
+
+# With primary action
+frappe.msgprint(
+    "Record created. Do you want to continue?",
+    primary_action={
+        "label": "Continue",
+        "action": "my_app.api.continue_process"
+    }
+)
+```
+
+### toast
+
+Show a toast notification (shorthand for msgprint with alert=True).
+
+<ParamField path="message" type="str" required>
+  Message to display
+</ParamField>
+
+<ParamField path="indicator" type="str">
+  Color indicator
+</ParamField>
+
+```python
+frappe.toast("Record saved", indicator="green")
+frappe.toast("Warning: Low stock", indicator="orange")
+```
+
+## Data utilities
+
+### cint
+
+Convert value to integer.
+
+<ParamField path="value" type="any" required>
+  Value to convert
+</ParamField>
+
+<ParamField path="default" type="int" default="0">
+  Default value if conversion fails
+</ParamField>
+
+```python
+from frappe.utils import cint
+
+qty = cint("10")  # 10
+qty = cint("10.5")  # 10
+qty = cint("")  # 0
+qty = cint(None, default=1)  # 1
+```
+
+### flt
+
+Convert value to float.
+
+<ParamField path="value" type="any" required>
+  Value to convert
+</ParamField>
+
+<ParamField path="precision" type="int">
+  Decimal precision
+</ParamField>
+
+```python
+from frappe.utils import flt
+
+price = flt("99.99")  # 99.99
+price = flt("99.999", precision=2)  # 100.0
+price = flt("")  # 0.0
+```
+
+### cstr
+
+Convert value to string.
+
+<ParamField path="value" type="any" required>
+  Value to convert
+</ParamField>
+
+```python
+from frappe.utils import cstr
+
+name = cstr(123)  # "123"
+name = cstr(None)  # ""
+name = cstr([1, 2, 3])  # "[1, 2, 3]"
+```
+
+### sbool
+
+Convert value to boolean (handles string "0" and "1").
+
+<ParamField path="value" type="any" required>
+  Value to convert
+</ParamField>
+
+```python
+from frappe.utils import sbool
+
+flag = sbool("1")  # True
+flag = sbool("0")  # False
+flag = sbool("true")  # True
+flag = sbool("")  # False
+```
+
+## Date and time utilities
+
+### now
+
+Get current datetime as string.
+
+```python
+from frappe.utils import now
+
+current_time = now()  # "2024-01-15 14:30:00.123456"
+```
+
+### today
+
+Get current date as string.
+
+```python
+from frappe.utils import today
+
+current_date = today()  # "2024-01-15"
+```
+
+### getdate
+
+Convert string to date object.
+
+<ParamField path="value" type="str | date | datetime">
+  Date string or object. Default: today
+</ParamField>
+
+```python
+from frappe.utils import getdate
+
+date_obj = getdate("2024-01-15")  # datetime.date(2024, 1, 15)
+date_obj = getdate()  # today's date
+```
+
+### get_datetime
+
+Convert string to datetime object.
+
+<ParamField path="value" type="str | datetime">
+  Datetime string or object
+</ParamField>
+
+```python
+from frappe.utils import get_datetime
+
+dt = get_datetime("2024-01-15 14:30:00")
+dt = get_datetime("2024-01-15")  # Sets time to 00:00:00
+```
+
+### add_days
+
+Add days to a date.
+
+<ParamField path="date" type="str | date">
+  Starting date. Default: today
+</ParamField>
+
+<ParamField path="days" type="int" required>
+  Number of days to add (negative to subtract)
+</ParamField>
+
+```python
+from frappe.utils import add_days, today
+
+tomorrow = add_days(today(), 1)
+last_week = add_days(today(), -7)
+```
+
+### add_months
+
+Add months to a date.
+
+<ParamField path="date" type="str | date">
+  Starting date
+</ParamField>
+
+<ParamField path="months" type="int" required>
+  Number of months to add
+</ParamField>
+
+```python
+from frappe.utils import add_months, today
+
+next_month = add_months(today(), 1)
+last_year = add_months(today(), -12)
+```
+
+### date_diff
+
+Get difference between two dates in days.
+
+<ParamField path="date1" type="str | date" required>
+  First date
+</ParamField>
+
+<ParamField path="date2" type="str | date" required>
+  Second date
+</ParamField>
+
+```python
+from frappe.utils import date_diff
+
+days = date_diff("2024-01-15", "2024-01-10")  # 5
+```
+
+### time_diff
+
+Get time difference between two datetimes.
+
+<ParamField path="time1" type="str | datetime" required>
+  First datetime
+</ParamField>
+
+<ParamField path="time2" type="str | datetime" required>
+  Second datetime
+</ParamField>
+
+```python
+from frappe.utils import time_diff
+
+td = time_diff("2024-01-15 15:00:00", "2024-01-15 14:00:00")
+print(td.total_seconds() / 3600)  # 1.0 hour
+```
+
+### format_date
+
+Format date according to user's locale.
+
+<ParamField path="date" type="str | date" required>
+  Date to format
+</ParamField>
+
+<ParamField path="format_string" type="str">
+  Custom format string
+</ParamField>
+
+```python
+from frappe.utils import format_date
+
+formatted = format_date("2024-01-15")  # Based on user format
+formatted = format_date("2024-01-15", "dd-mm-yyyy")  # "15-01-2024"
+```
+
+## String utilities
+
+### scrub
+
+Convert string to lowercase with underscores.
+
+<ParamField path="text" type="str" required>
+  Text to convert
+</ParamField>
+
+```python
+frappe.scrub("Sales Order")  # "sales_order"
+frappe.scrub("Customer Name")  # "customer_name"
+```
+
+### unscrub
+
+Convert underscore string to title case.
+
+<ParamField path="text" type="str" required>
+  Text to convert
+</ParamField>
+
+```python
+frappe.unscrub("sales_order")  # "Sales Order"
+frappe.unscrub("customer_name")  # "Customer Name"
+```
+
+### bold
+
+Wrap text in bold HTML tag.
+
+<ParamField path="text" type="str" required>
+  Text to make bold
+</ParamField>
+
+```python
+from frappe.utils import bold
+
+message = f"Customer {bold('CUST-001')} was updated"
+# "Customer <b>CUST-001</b> was updated"
+```
+
+## JSON utilities
+
+### as_json
+
+Convert object to JSON string.
+
+<ParamField path="obj" type="dict | list" required>
+  Object to convert
+</ParamField>
+
+<ParamField path="indent" type="int" default="1">
+  Indentation level
+</ParamField>
+
+```python
+data = {"name": "John", "age": 30}
+json_str = frappe.as_json(data)
+# '{\n "name": "John",\n "age": 30\n}'
+```
+
+### parse_json
+
+Parse JSON string to object.
+
+<ParamField path="text" type="str" required>
+  JSON string
+</ParamField>
+
+```python
+from frappe.utils import parse_json
+
+obj = parse_json('{"name": "John"}')
+print(obj["name"])  # "John"
+```
+
+## Formatting utilities
+
+### format_value
+
+Format a value based on field type.
+
+<ParamField path="value" type="any" required>
+  Value to format
+</ParamField>
+
+<ParamField path="df" type="dict">
+  Field definition dict with fieldtype, options, etc.
+</ParamField>
+
+<ParamField path="doc" type="Document">
+  Document for context
+</ParamField>
+
+```python
+from frappe.utils import format_value
+
+# Format currency
+formatted = format_value(
+    1000,
+    {"fieldtype": "Currency", "options": "INR"},
+)
+# "₹ 1,000.00"
+
+# Format date
+formatted = format_value(
+    "2024-01-15",
+    {"fieldtype": "Date"},
+)
+```
+
+### comma_and
+
+Join list items with commas and 'and'.
+
+<ParamField path="items" type="list" required>
+  List of items
+</ParamField>
+
+```python
+from frappe.utils import comma_and
+
+result = comma_and(["Apple", "Orange", "Banana"])
+# "Apple, Orange and Banana"
+
+result = comma_and(["Item 1", "Item 2"])
+# "Item 1 and Item 2"
+```
+
+## Translation
+
+### _
+
+Translate a string to the user's language.
+
+<ParamField path="text" type="str" required>
+  Text to translate
+</ParamField>
+
+<ParamField path="context" type="str">
+  Translation context
+</ParamField>
+
+```python
+from frappe import _
+
+message = _("Customer saved successfully")
+error = _("This field is required")
+
+# With context for disambiguation
+label = _("Close", context="Button label")
+```
+
+## File utilities
+
+### get_files_path
+
+Get the files directory path.
+
+```python
+from frappe.utils import get_files_path
+
+files_path = get_files_path()
+# "/path/to/site/private/files" or "/path/to/site/public/files"
+```
+
+### create_folder
+
+Create a folder if it doesn't exist.
+
+<ParamField path="path" type="str" required>
+  Folder path to create
+</ParamField>
+
+```python
+from frappe.utils import create_folder
+
+create_folder("/path/to/new/folder")
+```
+
+## Validation utilities
+
+### validate_email_address
+
+Validate if string is a valid email address.
+
+<ParamField path="email" type="str" required>
+  Email address to validate
+</ParamField>
+
+<ParamField path="throw" type="bool" default="False">
+  Raise InvalidEmailAddressError if invalid
+</ParamField>
+
+```python
+from frappe.utils import validate_email_address
+
+validate_email_address("user@example.com", throw=True)
+```
+
+### validate_url
+
+Validate if string is a valid URL.
+
+<ParamField path="url" type="str" required>
+  URL to validate
+</ParamField>
+
+<ParamField path="throw" type="bool" default="False">
+  Raise ValidationError if invalid
+</ParamField>
+
+```python
+from frappe.utils import validate_url
+
+validate_url("https://example.com", throw=True)
+```
+
+## Miscellaneous
+
+### get_traceback
+
+Get the current exception traceback as string.
+
+```python
+try:
+    # some code
+    pass
+except Exception:
+    frappe.log_error(frappe.get_traceback())
+```
+
+### generate_hash
+
+Generate a random hash string.
+
+<ParamField path="length" type="int" default="56">
+  Length of hash to generate
+</ParamField>
+
+```python
+token = frappe.generate_hash(length=32)
+# "a1b2c3d4e5f6..."
+```

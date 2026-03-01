@@ -1,0 +1,656 @@
+---
+title: Web routing
+description: URL routing, web views, and page rendering in Frappe Framework
+---
+
+Frappe provides a flexible routing system for web pages, web forms, dynamic routes, and portal pages. It automatically handles URL mapping, template rendering, and context building.
+
+## Overview
+
+Frappe's routing system resolves URLs to templates, controllers, and data in this priority order:
+
+1. **Desk routes**: `/desk/*` routes to the Frappe desk interface
+2. **Web Forms**: Published web forms with custom routes
+3. **Web Pages**: Dynamic web pages with custom routes
+4. **DocType web views**: DocTypes with `has_web_view` enabled
+5. **Standard pages**: Static HTML/MD files in `www/` folders
+6. **Website route redirects**: Configured redirects
+7. **Generators**: Blog posts, products, etc.
+
+```python
+# Example: How Frappe resolves a URL
+# /products/laptop-15inch
+
+# 1. Check if it's a web form route
+# 2. Check if it's a web page with dynamic route
+# 3. Check DocType generators (e.g., Item with route 'products/laptop-15inch')
+# 4. Check static pages in www/products/laptop-15inch.html
+# 5. Return 404 if not found
+```
+
+## Static pages
+
+Create static pages by adding HTML or Markdown files in the `www/` directory:
+
+```
+my_app/
+  └── www/
+      ├── about.html          # /about
+      ├── about.py            # Controller (optional)
+      ├── about.js            # JavaScript (optional)
+      ├── about.css           # Styles (optional)
+      ├── contact/
+      │   └── index.html      # /contact
+      └── products/
+          ├── index.html      # /products
+          └── features.md     # /products/features
+```
+
+### HTML pages
+
+```html
+<!-- www/about.html -->
+{% extends "templates/web.html" %}
+
+{% block title %}About Us{% endblock %}
+
+{% block page_content %}
+<div class="container">
+    <h1>About Our Company</h1>
+    <p>We are a leading provider of...</p>
+    
+    <!-- Access Jinja context -->
+    <p>Current user: {{ frappe.session.user }}</p>
+</div>
+{% endblock %}
+```
+
+### Markdown pages
+
+```markdown
+<!-- www/blog/my-post.md -->
+---
+title: My Blog Post
+description: A great blog post about Frappe
+---
+
+# Welcome to My Blog
+
+This is **markdown** content that will be automatically converted to HTML.
+
+## Features
+
+- Automatic HTML conversion
+- Frontmatter support
+- Code highlighting
+```
+
+### Page controllers
+
+Add Python controllers for dynamic content:
+
+```python
+# www/products/index.py
+import frappe
+
+def get_context(context):
+    """Build page context"""
+    context.products = frappe.get_all(
+        'Item',
+        filters={'show_in_website': 1},
+        fields=['name', 'item_name', 'image', 'description'],
+        limit=20
+    )
+    context.featured_product = get_featured_product()
+    context.categories = get_categories()
+    
+    return context
+
+def get_featured_product():
+    """Get featured product"""
+    return frappe.get_doc('Item', {'featured': 1})
+```
+
+Use context in template:
+
+```html
+<!-- www/products/index.html -->
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+<div class="products">
+    <h1>Our Products</h1>
+    
+    <!-- Featured product -->
+    <div class="featured">
+        <h2>{{ featured_product.item_name }}</h2>
+        <img src="{{ featured_product.image }}" />
+    </div>
+    
+    <!-- Product list -->
+    <div class="product-grid">
+        {% for product in products %}
+        <div class="product-card">
+            <h3>{{ product.item_name }}</h3>
+            <p>{{ product.description }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+```
+
+## Dynamic routes
+
+Web pages can have dynamic URL patterns:
+
+### Web Page with dynamic route
+
+```python
+# Create a Web Page with dynamic_route = 1
+doc = frappe.get_doc({
+    'doctype': 'Web Page',
+    'title': 'Product Details',
+    'route': 'products/<product_slug>',  # Dynamic parameter
+    'dynamic_route': 1,
+    'published': 1
+})
+doc.insert()
+```
+
+Create controller for the web page:
+
+```python
+# www/products.py (controller for dynamic route)
+import frappe
+from frappe.website.website_generator import WebsiteGenerator
+
+def get_context(context):
+    """Get context for product/<product_slug>"""
+    # Get dynamic parameter from frappe.form_dict
+    product_slug = frappe.form_dict.get('product_slug')
+    
+    if not product_slug:
+        frappe.throw('Product not found', frappe.DoesNotExistError)
+    
+    # Load product data
+    product = frappe.get_doc('Item', {'route': f'products/{product_slug}'})
+    
+    context.product = product
+    context.related_products = get_related_products(product)
+    context.reviews = get_product_reviews(product.name)
+    
+    return context
+```
+
+The route `/products/laptop-15inch` will call `get_context()` with `product_slug='laptop-15inch'`.
+
+### Werkzeug routing
+
+Frappe uses Werkzeug for advanced routing:
+
+```python
+from werkzeug.routing import Rule
+
+# Define routes in web page
+rules = [
+    Rule('/project/<project_id>', endpoint='view_project'),
+    Rule('/project/<project_id>/edit', endpoint='edit_project'),
+    Rule('/project/<int:project_id>/tasks', endpoint='project_tasks')
+]
+
+# Access parameters in controller
+def get_context(context):
+    project_id = frappe.form_dict.get('project_id')
+    context.project = frappe.get_doc('Project', project_id)
+```
+
+## Web Forms
+
+Web forms provide auto-generated forms for DocTypes:
+
+```python
+# Create a web form
+web_form = frappe.get_doc({
+    'doctype': 'Web Form',
+    'title': 'Job Application',
+    'route': 'careers/apply',
+    'doc_type': 'Job Applicant',
+    'is_standard': 0,
+    'published': 1,
+    'allow_edit': 1,
+    'allow_multiple': 1,
+    'show_sidebar': 1,
+    'allow_print': 0,
+    'allow_delete': 0
+})
+
+# Add fields
+web_form.append('web_form_fields', {
+    'fieldname': 'applicant_name',
+    'label': 'Full Name',
+    'fieldtype': 'Data',
+    'reqd': 1
+})
+
+web_form.append('web_form_fields', {
+    'fieldname': 'email',
+    'label': 'Email',
+    'fieldtype': 'Data',
+    'reqd': 1
+})
+
+web_form.insert()
+```
+
+Web form URLs:
+- `/careers/apply` - New form
+- `/careers/apply/new` - Explicit new form
+- `/careers/apply/JA-0001` - View existing
+- `/careers/apply/JA-0001/edit` - Edit existing
+- `/careers/apply/list` - List view
+
+### Web form hooks
+
+```python
+# Custom web form controller
+# my_app/www/careers/apply.py
+
+def get_context(context):
+    """Customize web form context"""
+    context.show_sidebar = True
+    context.positions = frappe.get_all('Job Opening', 
+        filters={'status': 'Open'},
+        fields=['name', 'job_title']
+    )
+```
+
+## DocType web views
+
+Enable web views for DocTypes:
+
+```python
+# DocType with web view
+# has_web_view = 1
+# route field
+
+class Item(WebsiteGenerator):
+    def get_context(self, context):
+        """Build context for item web page"""
+        context.related_items = self.get_related_items()
+        context.specifications = self.get_specifications()
+        context.reviews = get_reviews(self.name)
+        return context
+    
+    def get_related_items(self):
+        return frappe.get_all('Item',
+            filters={
+                'item_group': self.item_group,
+                'name': ['!=', self.name],
+                'show_in_website': 1
+            },
+            limit=5
+        )
+```
+
+Template for DocType web view:
+
+```html
+<!-- templates/generators/item.html -->
+{% extends "templates/web.html" %}
+
+{% block title %}{{ doc.item_name }}{% endblock %}
+
+{% block page_content %}
+<div class="item-details">
+    <h1>{{ doc.item_name }}</h1>
+    
+    <div class="item-image">
+        <img src="{{ doc.website_image or doc.image }}" />
+    </div>
+    
+    <div class="item-description">
+        {{ doc.web_long_description or doc.description }}
+    </div>
+    
+    <div class="specifications">
+        <h2>Specifications</h2>
+        {% for spec in specifications %}
+        <div class="spec">
+            <strong>{{ spec.label }}:</strong> {{ spec.value }}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="related-items">
+        <h2>Related Products</h2>
+        {% for item in related_items %}
+        <a href="/{{ item.route }}">{{ item.item_name }}</a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+```
+
+## Route configuration
+
+### Website route rules
+
+Define route rules in hooks.py:
+
+```python
+# hooks.py
+website_route_rules = [
+    # Map /shop/<category> to DocType
+    {"from_route": "/shop/<category>", "to_route": "Item"},
+    
+    # Profile redirects
+    {"from_route": "/profile", "to_route": "me"},
+    
+    # Desk routes
+    {"from_route": "/desk/<path:app_path>", "to_route": "desk"}
+]
+```
+
+### Website redirects
+
+Configure redirects:
+
+```python
+# hooks.py
+website_redirects = [
+    # Simple redirect
+    {"source": "/old-page", "target": "/new-page"},
+    
+    # Regex redirect with query params
+    {
+        "source": r"/app/(.*)",
+        "target": r"/desk/\\1",
+        "forward_query_parameters": True
+    },
+    
+    # Multiple sources
+    {"source": ["/apps", "/app"], "target": "/desk"}
+]
+```
+
+### Custom route resolution
+
+```python
+# In page controller
+def get_context(context):
+    # Get current route
+    route = frappe.local.request.path
+    
+    # Parse route segments
+    parts = route.strip('/').split('/')
+    
+    # Custom logic based on route
+    if len(parts) > 1 and parts[0] == 'category':
+        context.category = parts[1]
+        context.items = get_items_by_category(parts[1])
+```
+
+## Portal pages
+
+Portal pages are for authenticated users:
+
+```python
+# www/portal/my-orders.py
+import frappe
+
+def get_context(context):
+    # Check if user is logged in
+    if frappe.session.user == 'Guest':
+        frappe.throw('Please login to view orders', frappe.PermissionError)
+    
+    # Get user's orders
+    context.orders = frappe.get_all(
+        'Sales Order',
+        filters={'customer': get_customer()},
+        fields=['name', 'transaction_date', 'grand_total', 'status'],
+        order_by='creation desc'
+    )
+    
+    context.no_cache = 1  # Don't cache user-specific content
+    return context
+
+def get_customer():
+    """Get customer linked to current user"""
+    return frappe.db.get_value('Customer', {'email_id': frappe.session.user})
+```
+
+### Portal permissions
+
+```python
+# Check portal permissions
+def has_website_permission(doc, ptype='read', user=None):
+    """Check if user can access document on portal"""
+    if not user:
+        user = frappe.session.user
+    
+    # Guest users have no access
+    if user == 'Guest':
+        return False
+    
+    # Check if user is linked to document
+    customer = frappe.db.get_value('Customer', {'email_id': user})
+    return doc.customer == customer
+```
+
+Use in hooks.py:
+
+```python
+has_website_permission = {
+    'Sales Order': 'my_app.permissions.sales_order_website_permission'
+}
+```
+
+## Context building
+
+### Default context
+
+Every web page gets default context:
+
+```python
+context = {
+    'frappe': frappe,  # Frappe module
+    'frappe.form_dict': frappe.form_dict,  # URL parameters
+    'frappe.session': frappe.session,  # Session data
+    '_': frappe._,  # Translation function
+    'get_url': get_url,  # URL builder
+    'cint': cint,  # Integer conversion
+    'flt': flt,  # Float conversion
+}
+```
+
+### Custom context
+
+Add custom context in controller:
+
+```python
+def get_context(context):
+    # Add custom data
+    context.custom_field = 'value'
+    context.items = get_items()
+    
+    # Modify page properties
+    context.no_cache = 1  # Disable caching
+    context.show_sidebar = True
+    context.title = 'Custom Title'
+    context.description = 'Page description for SEO'
+    
+    # Add meta tags
+    context.meta_tags = {
+        'og:title': 'Social media title',
+        'og:description': 'Social media description',
+        'og:image': '/assets/image.jpg'
+    }
+    
+    return context
+```
+
+## URL parameters
+
+### Query parameters
+
+```python
+# URL: /products?category=electronics&sort=price
+
+def get_context(context):
+    # Access query parameters
+    category = frappe.form_dict.get('category')
+    sort_by = frappe.form_dict.get('sort', 'name')  # Default value
+    
+    context.products = frappe.get_all('Item',
+        filters={'item_group': category} if category else {},
+        order_by=sort_by
+    )
+```
+
+### Path parameters
+
+```python
+# URL: /products/laptop-15inch
+
+def get_context(context):
+    # Get path segments
+    path = frappe.local.request.path
+    segments = path.strip('/').split('/')
+    
+    # Extract parameters
+    if len(segments) >= 2:
+        category = segments[0]  # 'products'
+        slug = segments[1]       # 'laptop-15inch'
+        
+        context.product = frappe.get_doc('Item', {'route': path})
+```
+
+## Caching
+
+### Page caching
+
+```python
+def get_context(context):
+    # Disable caching for dynamic content
+    context.no_cache = 1
+    
+    # Or enable caching
+    context.cache = 1
+```
+
+### Cache invalidation
+
+```python
+# Clear website cache
+frappe.clear_website_cache()
+
+# Clear cache for specific page
+frappe.clear_website_cache('products/laptop')
+
+# Clear cache for specific DocType
+frappe.clear_website_cache(doctype='Item')
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate route types">
+    - Static pages: Simple content pages
+    - Dynamic routes: Pattern-based URLs
+    - Web forms: User data collection
+    - DocType web views: Database-driven content
+  </Accordion>
+
+  <Accordion title="Handle 404s gracefully">
+    ```python
+    def get_context(context):
+        try:
+            context.product = frappe.get_doc('Item', slug)
+        except frappe.DoesNotExistError:
+            frappe.throw('Product not found', frappe.PageDoesNotExistError)
+    ```
+  </Accordion>
+
+  <Accordion title="Optimize page load">
+    ```python
+    def get_context(context):
+        # Limit database queries
+        # Use caching where appropriate
+        # Lazy load heavy content
+        
+        context.featured_items = frappe.cache.get_value(
+            'featured_items',
+            generator=lambda: get_featured_items()
+        )
+    ```
+  </Accordion>
+
+  <Accordion title="Security">
+    ```python
+    def get_context(context):
+        # Always validate user input
+        slug = frappe.form_dict.get('slug')
+        if not slug or not slug.isalnum():
+            frappe.throw('Invalid request')
+        
+        # Check permissions
+        if frappe.session.user == 'Guest':
+            frappe.throw('Login required', frappe.PermissionError)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting routes
+
+### Debug routing
+
+```python
+# Enable website route debugging
+frappe.conf.developer_mode = 1
+
+# Check route resolution
+from frappe.website.router import resolve_route
+page_info = resolve_route('/products/laptop')
+print(page_info)
+```
+
+### Common issues
+
+<Tabs>
+  <Tab title="404 errors">
+    - Check if page file exists in www/ folder
+    - Verify route in Web Page
+    - Check DocType has_web_view and route field
+    - Clear cache: `bench clear-cache`
+  </Tab>
+  <Tab title="Template errors">
+    - Check template syntax
+    - Verify template extends correct base
+    - Check context variables are defined
+    - Look at error logs: `bench watch`
+  </Tab>
+  <Tab title="Permission errors">
+    - Check has_website_permission
+    - Verify user authentication
+    - Check DocType permissions
+    - Review portal settings
+  </Tab>
+</Tabs>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Hooks system" icon="webhook" href="./hooks">
+    Configure route rules and redirects
+  </Card>
+  <Card title="Forms" icon="window" href="./forms">
+    Understand web forms
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Control page access
+  </Card>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Enable web views for DocTypes
+  </Card>
+</CardGroup>

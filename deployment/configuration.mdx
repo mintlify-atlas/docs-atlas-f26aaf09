@@ -1,0 +1,462 @@
+---
+title: 'Configuration options'
+description: 'Configure Frappe Framework using site_config.json and common_site_config.json'
+---
+
+## Overview
+
+Frappe uses JSON configuration files to manage site-specific and global settings. Understanding these configuration options is essential for customizing your deployment.
+
+## Configuration files
+
+### site_config.json
+
+Stored in each site directory (`sites/mysite/site_config.json`), this file contains site-specific settings:
+
+```json
+{
+  "db_name": "mysite_db",
+  "db_password": "password123",
+  "developer_mode": 1,
+  "encryption_key": "random_key"
+}
+```
+
+### common_site_config.json
+
+Stored in the sites directory (`sites/common_site_config.json`), this file contains settings shared across all sites:
+
+```json
+{
+  "redis_cache": "redis://127.0.0.1:13311",
+  "redis_queue": "redis://127.0.0.1:11311",
+  "db_host": "127.0.0.1",
+  "db_port": 3306
+}
+```
+
+<Note>
+Settings in `site_config.json` override those in `common_site_config.json`.
+</Note>
+
+## Database configuration
+
+### Database type
+
+Specify the database backend:
+
+```json
+{
+  "db_type": "mariadb"
+}
+```
+
+Supported values:
+- `mariadb` (default)
+- `postgres`
+- `sqlite`
+
+### Connection settings
+
+Configure database connection parameters:
+
+```json
+{
+  "db_host": "127.0.0.1",
+  "db_port": 3306,
+  "db_name": "mysite_database",
+  "db_user": "frappe",
+  "db_password": "secure_password",
+  "db_socket": "/var/run/mysqld/mysqld.sock"
+}
+```
+
+| Setting | Description | Default |
+|---------|-------------|----------|
+| `db_host` | Database server hostname | `127.0.0.1` |
+| `db_port` | Database server port | `3306` (MariaDB), `5432` (PostgreSQL) |
+| `db_name` | Database name | Site name |
+| `db_user` | Database username | Same as `db_name` |
+| `db_password` | Database password | Required |
+| `db_socket` | Unix socket path (optional) | - |
+
+<Tip>
+Use `db_socket` instead of `db_host` and `db_port` for faster local connections.
+</Tip>
+
+## Redis configuration
+
+Frappe uses Redis for caching and job queuing:
+
+```json
+{
+  "redis_cache": "redis://127.0.0.1:13311",
+  "redis_queue": "redis://127.0.0.1:11311"
+}
+```
+
+| Setting | Description | Default |
+|---------|-------------|----------|
+| `redis_cache` | Redis URL for caching | `redis://127.0.0.1:13311` |
+| `redis_queue` | Redis URL for job queue | `redis://127.0.0.1:11311` |
+
+### Redis URL formats
+
+```json
+{
+  "redis_cache": "redis://localhost:6379",
+  "redis_cache": "redis://:password@localhost:6379",
+  "redis_cache": "redis://localhost:6379/0"
+}
+```
+
+## Development settings
+
+### Developer mode
+
+Enable developer mode for enhanced debugging:
+
+```json
+{
+  "developer_mode": 1
+}
+```
+
+When enabled:
+- Detailed error pages with stack traces
+- Auto-reload on Python file changes
+- Enhanced logging
+- Better error messages for missing sites
+
+<Warning>
+Never enable developer mode in production. It exposes sensitive information.
+</Warning>
+
+### Debug logging
+
+Control logging verbosity:
+
+```json
+{
+  "logging": 2
+}
+```
+
+Values:
+- `0`: Minimal logging
+- `1`: Standard logging
+- `2`: Verbose logging (debug)
+
+## Security settings
+
+### Encryption key
+
+Used for encrypting sensitive data:
+
+```json
+{
+  "encryption_key": "random_base64_encoded_key"
+}
+```
+
+<Warning>
+Never commit encryption keys to version control. Back up this key securely - losing it means losing access to encrypted data.
+</Warning>
+
+### Backup encryption
+
+Encrypt backups with a separate key:
+
+```json
+{
+  "backup_encryption_key": "another_secure_key"
+}
+```
+
+### Session settings
+
+Configure user session behavior:
+
+```json
+{
+  "session_expiry": "06:00",
+  "session_expiry_mobile": "720:00"
+}
+```
+
+## Application settings
+
+### Installed apps
+
+List of installed applications:
+
+```json
+{
+  "installed_apps": [
+    "frappe",
+    "erpnext"
+  ]
+}
+```
+
+### Host name
+
+Set the site's hostname:
+
+```json
+{
+  "host_name": "https://mysite.example.com"
+}
+```
+
+### Site name
+
+Display name for the site:
+
+```json
+{
+  "site_name": "My Company Portal"
+}
+```
+
+## Email configuration
+
+### Outgoing email
+
+Configure SMTP for sending emails:
+
+```json
+{
+  "mail_server": "smtp.gmail.com",
+  "mail_port": 587,
+  "use_tls": 1,
+  "mail_login": "notifications@example.com",
+  "mail_password": "app_password",
+  "auto_email_id": "notifications@example.com",
+  "always_use_account_email_id_as_sender": 0
+}
+```
+
+### Incoming email
+
+Configure email pulling:
+
+```json
+{
+  "email_sync_enabled": 1,
+  "pop3_server": "pop.gmail.com",
+  "pop3_port": 995
+}
+```
+
+## Background worker configuration
+
+Customize background worker behavior:
+
+```json
+{
+  "workers": {
+    "short": {
+      "timeout": 300
+    },
+    "default": {
+      "timeout": 300
+    },
+    "long": {
+      "timeout": 1500
+    }
+  }
+}
+```
+
+| Queue | Purpose | Default timeout |
+|-------|---------|----------------|
+| `short` | Quick background jobs | 300s |
+| `default` | Standard background jobs | 300s |
+| `long` | Long-running operations | 1500s |
+
+### Scheduler configuration
+
+Control the scheduler tick interval:
+
+```json
+{
+  "scheduler_tick_interval": 60
+}
+```
+
+<Note>
+Scheduler tick interval is specified in seconds. Default is 60 seconds.
+</Note>
+
+## Performance settings
+
+### Auto-restart supervisor
+
+Automatically restart processes after code updates:
+
+```json
+{
+  "restart_supervisor_on_update": true
+}
+```
+
+### Enable server scripts
+
+Allow server-side scripting:
+
+```json
+{
+  "server_script_enabled": 1
+}
+```
+
+<Warning>
+Server scripts can execute arbitrary Python code. Only enable in trusted environments.
+</Warning>
+
+## Maintenance mode
+
+Put site in maintenance mode:
+
+```json
+{
+  "maintenance_mode": 1,
+  "allow_reads_during_maintenance": 1
+}
+```
+
+When enabled:
+- Users cannot access the site (except System Managers)
+- Optional read-only access during maintenance
+- Useful during migrations or upgrades
+
+## PDF generation
+
+### Chromium configuration
+
+Configure Chromium for PDF generation:
+
+```json
+{
+  "chromium_path": "/usr/bin/chromium",
+  "chromium_websocket_url": "ws://localhost:9222",
+  "chromium_max_concurrent": 1,
+  "chromium_start_timeout": 3,
+  "use_persistent_chromium": false
+}
+```
+
+## Environment variable overrides
+
+Frappe automatically reads configuration from environment variables, which take precedence over config files:
+
+| Environment Variable | Config Key | Description |
+|---------------------|------------|-------------|
+| `FRAPPE_DB_HOST` | `db_host` | Database host |
+| `FRAPPE_DB_PORT` | `db_port` | Database port |
+| `FRAPPE_DB_NAME` | `db_name` | Database name |
+| `FRAPPE_DB_USER` | `db_user` | Database user |
+| `FRAPPE_DB_PASSWORD` | `db_password` | Database password |
+| `FRAPPE_DB_SOCKET` | `db_socket` | Database socket path |
+| `FRAPPE_DB_TYPE` | `db_type` | Database type |
+| `FRAPPE_REDIS_CACHE` | `redis_cache` | Redis cache URL |
+| `FRAPPE_REDIS_QUEUE` | `redis_queue` | Redis queue URL |
+
+<Tip>
+Use environment variables in containerized deployments for better security and flexibility.
+</Tip>
+
+## Custom configuration hooks
+
+Extend configuration programmatically:
+
+```json
+{
+  "extra_config": [
+    "myapp.config.get_custom_config"
+  ]
+}
+```
+
+The hook function should return a dictionary:
+
+```python
+# myapp/config.py
+def get_custom_config():
+    return {
+        "custom_setting": "value"
+    }
+```
+
+## Managing configuration
+
+### Update configuration via CLI
+
+Use bench to update configuration:
+
+```bash
+# Set site-specific config
+bench --site mysite.localhost set-config key value
+
+# Set common config
+bench config set key value
+```
+
+### Programmatic updates
+
+Update configuration from Python:
+
+```python
+from frappe.installer import update_site_config
+
+# Update site config
+update_site_config('developer_mode', 1)
+
+# Remove a key
+update_site_config('old_key', 'None')
+```
+
+### Read configuration
+
+Access configuration in your code:
+
+```python
+import frappe
+
+# Get site config
+config = frappe.get_site_config()
+db_host = config.get('db_host')
+
+# Get common config
+common_config = frappe.get_common_site_config()
+redis_url = common_config.get('redis_cache')
+
+# Access merged config
+db_name = frappe.conf.db_name
+```
+
+## Configuration cache
+
+Frappe caches configuration for performance:
+
+```python
+# Get cached config (60 second TTL)
+config = frappe.get_site_config(cached=True)
+
+# Clear cache after updates
+from frappe.config import clear_site_config_cache
+clear_site_config_cache()
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Production deployment" icon="server" href="/deployment/production">
+  Deploy Frappe to production environments
+</Card>
+
+<Card title="Bench tool" icon="wrench" href="/deployment/bench">
+  Learn more about bench commands
+</Card>
+</CardGroup>

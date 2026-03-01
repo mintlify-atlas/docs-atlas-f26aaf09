@@ -1,0 +1,176 @@
+---
+title: Frappe Framework
+description: Low-code web framework for real-world applications in Python and JavaScript
+---
+
+<div style={{textAlign: 'center', marginBottom: '2rem'}}>
+  <img src="/images/hero-image.png" alt="Frappe Framework" style={{maxWidth: '100%', height: 'auto'}} />
+</div>
+
+## Build powerful web applications faster
+
+Frappe Framework is a full-stack, metadata-driven web framework that uses Python and MariaDB on the server side with a tightly integrated JavaScript client library. Built to power ERPNext, it's designed for building complex, database-driven applications with minimal code.
+
+<Note>
+  **Philosophy**: The best code is the one that is not written. Frappe achieves this through metadata-driven development, where you define what your data looks like, and the framework handles the rest.
+</Note>
+
+## Why Frappe?
+
+Started in 2005, Frappe was inspired by the Semantic Web concept—a framework that describes not just how information appears, but what it means. This semantic approach makes building complex applications easier, more consistent, and infinitely extensible.
+
+<CardGroup cols={2}>
+  <Card title="Full-stack framework" icon="layer-group">
+    Covers both front-end and back-end development in a single, cohesive framework
+  </Card>
+  <Card title="Built-in admin interface" icon="dashboard">
+    Pre-built, customizable admin dashboard for managing application data
+  </Card>
+  <Card title="Role-based permissions" icon="shield">
+    Comprehensive user and role management system built-in
+  </Card>
+  <Card title="REST API" icon="plug">
+    Automatically generated RESTful API for all models
+  </Card>
+  <Card title="Report builder" icon="chart-line">
+    Powerful reporting tool for creating custom reports without code
+  </Card>
+  <Card title="Background jobs" icon="clock">
+    Built-in job queue powered by Redis and RQ for async tasks
+  </Card>
+</CardGroup>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Set up Frappe Framework with Docker or manual installation
+  </Card>
+  <Card
+    title="Quick start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first "Hello World" app in minutes
+  </Card>
+  <Card
+    title="Architecture"
+    icon="sitemap"
+    href="/architecture"
+  >
+    Understand the core concepts and structure
+  </Card>
+  <Card
+    title="Core concepts"
+    icon="book"
+    href="/concepts/doctype"
+  >
+    Learn about DocTypes, Documents, and more
+  </Card>
+</CardGroup>
+
+## Key features at a glance
+
+### Metadata-driven development
+
+Define your data structure using DocTypes—Frappe's metadata model. The framework automatically generates forms, list views, APIs, and database schemas.
+
+```python
+# No manual form creation needed!
+doc = frappe.get_doc({
+    "doctype": "ToDo",
+    "description": "Complete documentation",
+    "priority": "High"
+})
+doc.insert()
+```
+
+### Powerful ORM and query builder
+
+Work with your database using Frappe's intuitive ORM or PyPika-powered query builder:
+
+```python
+# Simple ORM
+todos = frappe.get_all(
+    "ToDo",
+    filters={"status": "Open"},
+    fields=["name", "description", "priority"]
+)
+
+# Query builder for complex queries
+ToDo = frappe.qb.DocType("ToDo")
+query = (
+    frappe.qb.from_(ToDo)
+    .select(ToDo.name, ToDo.description)
+    .where(ToDo.status == "Open")
+    .orderby(ToDo.priority)
+)
+results = query.run(as_dict=True)
+```
+
+### Real-time updates
+
+Built-in WebSocket support for real-time features:
+
+```python
+import frappe
+
+@frappe.whitelist()
+def update_progress():
+    for i in range(100):
+        frappe.publish_progress(
+            percent=i,
+            title="Processing...",
+            description=f"Step {i} of 100"
+        )
+```
+
+## Who uses Frappe?
+
+Frappe powers thousands of applications worldwide, including:
+
+- **ERPNext** - Open source ERP with 700+ object types
+- **Healthcare** - Hospital management system
+- **Education** - School and learning management
+- Custom business applications across industries
+
+<Card
+  title="See Frappe in action"
+  icon="play"
+  href="https://frappe.school"
+>
+  Learn from Frappe School's comprehensive courses and tutorials
+</Card>
+
+## Community and support
+
+<CardGroup cols={3}>
+  <Card title="Frappe School" icon="graduation-cap" href="https://frappe.school">
+    Free courses on Frappe Framework and ERPNext
+  </Card>
+  <Card title="Discussion Forum" icon="comments" href="https://discuss.frappe.io">
+    Engage with the community
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/frappe/frappe">
+    Contribute to the framework
+  </Card>
+</CardGroup>
+
+## Production ready
+
+<CardGroup cols={2}>
+  <Card title="Frappe Cloud" icon="cloud" href="https://frappecloud.com">
+    Managed hosting with automatic updates and monitoring
+  </Card>
+  <Card title="Self-hosting" icon="server" href="/deployment/production">
+    Deploy on your own infrastructure
+  </Card>
+</CardGroup>
+
+<Note>
+  **Ready to build?** Start with our [quick start guide](/quickstart) to create your first Frappe app in under 10 minutes.
+</Note>

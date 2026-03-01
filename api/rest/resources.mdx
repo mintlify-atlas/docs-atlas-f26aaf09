@@ -1,0 +1,662 @@
+---
+title: Resource endpoints
+---
+
+Resource endpoints provide CRUD (Create, Read, Update, Delete) operations for DocTypes. Frappe automatically generates these endpoints for all DocTypes in your application.
+
+## API versions
+
+Resource endpoints are available in both V1 and V2:
+
+- **V1**: `/api/resource/{doctype}`
+- **V2**: `/api/v2/document/{doctype}` (recommended)
+
+V2 offers enhanced features like bulk operations, better pagination, and improved response formats.
+
+## List documents
+
+Retrieve a list of documents for a DocType.
+
+### V1 endpoint
+
+```bash
+GET /api/resource/{doctype}
+```
+
+### V2 endpoint
+
+```bash
+GET /api/v2/document/{doctype}
+```
+
+### Query parameters
+
+<ParamField query="fields" type="JSON array">
+  List of field names to fetch. Defaults to all fields.
+  
+  ```bash
+  fields=["name","subject","status"]
+  ```
+</ParamField>
+
+<ParamField query="filters" type="JSON object or array">
+  Filter conditions for the query.
+  
+  **V1 format** (array of arrays):
+  ```bash
+  filters=[["Task","status","=","Open"]]
+  ```
+  
+  **V2 format** (object):
+  ```bash
+  filters={"status":"Open","priority":"High"}
+  ```
+</ParamField>
+
+<ParamField query="order_by" type="string">
+  Field to sort by. Add `desc` for descending order.
+  
+  ```bash
+  order_by=creation desc
+  ```
+</ParamField>
+
+<ParamField query="limit_page_length" type="integer" default="20">
+  **V1**: Number of records to fetch (default: 20)
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  **V2**: Maximum number of records to fetch (default: 20)
+</ParamField>
+
+<ParamField query="limit_start" type="integer" default="0">
+  **V1**: Starting offset for pagination (default: 0)
+</ParamField>
+
+<ParamField query="start" type="integer" default="0">
+  **V2**: Starting offset for pagination (default: 0)
+</ParamField>
+
+<ParamField query="group_by" type="string">
+  **V2**: Field to group results by
+</ParamField>
+
+### Example requests
+
+```bash
+# V1: Get open tasks
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/resource/Task?filters=[["Task","status","=","Open"]]&fields=["name","subject"]&limit_page_length=10'
+
+# V2: Get open tasks with pagination indicator
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/v2/document/Task?filters={"status":"Open"}&fields=["name","subject"]&limit=10&start=0'
+```
+
+### Example response (V2)
+
+```json
+{
+  "data": [
+    {
+      "name": "TASK-0001",
+      "subject": "Complete documentation"
+    },
+    {
+      "name": "TASK-0002",
+      "subject": "Review pull request"
+    }
+  ],
+  "has_next_page": true
+}
+```
+
+### Custom list queries
+
+DocType controllers can customize list queries by implementing a static `get_list` method:
+
+```python
+from frappe.model.document import Document
+import frappe
+
+class Project(Document):
+    @staticmethod
+    def get_list(query):
+        """
+        Customize the query for listing projects.
+        
+        Args:
+            query: QueryBuilder object
+            
+        Returns:
+            Modified QueryBuilder object or None
+        """
+        Project = frappe.qb.DocType("Project")
+        
+        if frappe.has_permission("Project", "read", user=frappe.session.user):
+            # Custom filtering based on user role
+            if "Project Owner" in frappe.get_roles():
+                query = query.where(Project.owner == frappe.session.user)
+            else:
+                query = query.where(Project.is_private == 0)
+        
+        return query
+```
+
+## Get document
+
+Retrieve a single document by name.
+
+### V1 endpoint
+
+```bash
+GET /api/resource/{doctype}/{name}
+```
+
+### V2 endpoint
+
+```bash
+GET /api/v2/document/{doctype}/{name}
+```
+
+### Query parameters
+
+<ParamField query="expand_links" type="boolean">
+  **V1**: Expand link fields to include full document data
+</ParamField>
+
+### Example requests
+
+```bash
+# V1: Get task
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/resource/Task/TASK-0001
+
+# V2: Get task
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/document/Task/TASK-0001
+```
+
+### Example response
+
+```json
+{
+  "data": {
+    "name": "TASK-0001",
+    "doctype": "Task",
+    "subject": "Complete documentation",
+    "status": "Open",
+    "priority": "High",
+    "description": "Write comprehensive API documentation",
+    "owner": "user@example.com",
+    "creation": "2024-01-15 10:30:00",
+    "modified": "2024-01-15 10:30:00"
+  }
+}
+```
+
+## Create document
+
+Create a new document.
+
+### V1 endpoint
+
+```bash
+POST /api/resource/{doctype}
+```
+
+### V2 endpoint
+
+```bash
+POST /api/v2/document/{doctype}
+```
+
+### Request body
+
+Send document data as JSON. Field values depend on the DocType's schema.
+
+### Example request
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "New task",
+    "status": "Open",
+    "priority": "Medium",
+    "description": "Task description here"
+  }' \
+  https://your-site.com/api/v2/document/Task
+```
+
+### Example response
+
+```json
+{
+  "data": {
+    "name": "TASK-0003",
+    "doctype": "Task",
+    "subject": "New task",
+    "status": "Open",
+    "priority": "Medium",
+    "description": "Task description here",
+    "owner": "user@example.com",
+    "creation": "2024-01-15 11:00:00",
+    "modified": "2024-01-15 11:00:00"
+  }
+}
+```
+
+### Setting custom name
+
+In V2, you can specify a custom `name` for the document:
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "MY-CUSTOM-ID",
+    "subject": "New task"
+  }' \
+  https://your-site.com/api/v2/document/Task
+```
+
+## Update document
+
+Update an existing document.
+
+### V1 endpoint
+
+```bash
+PUT /api/resource/{doctype}/{name}
+```
+
+### V2 endpoint
+
+```bash
+PUT /api/v2/document/{doctype}/{name}
+PATCH /api/v2/document/{doctype}/{name}
+```
+
+### Request body
+
+Send fields to update as JSON. Only include fields you want to modify.
+
+### Example request
+
+```bash
+curl -X PUT \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "Closed",
+    "priority": "Low"
+  }' \
+  https://your-site.com/api/v2/document/Task/TASK-0001
+```
+
+### Example response
+
+```json
+{
+  "data": {
+    "name": "TASK-0001",
+    "doctype": "Task",
+    "subject": "Complete documentation",
+    "status": "Closed",
+    "priority": "Low",
+    "modified": "2024-01-15 12:00:00"
+  }
+}
+```
+
+## Delete document
+
+Delete a document.
+
+### V1 endpoint
+
+```bash
+DELETE /api/resource/{doctype}/{name}
+```
+
+### V2 endpoint
+
+```bash
+DELETE /api/v2/document/{doctype}/{name}
+```
+
+### Example request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/document/Task/TASK-0001
+```
+
+### Example response
+
+HTTP Status: `202 Accepted`
+
+```json
+{
+  "data": "ok"
+}
+```
+
+## Copy document
+
+Create a copy of an existing document (V2 only).
+
+### V2 endpoint
+
+```bash
+GET /api/v2/document/{doctype}/{name}/copy
+```
+
+### Query parameters
+
+<ParamField query="ignore_no_copy" type="boolean" default="true">
+  If true, ignores fields marked as `no_copy` in the DocType definition
+</ParamField>
+
+### Example request
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/document/Task/TASK-0001/copy
+```
+
+### Example response
+
+Returns a clean copy that can be modified and posted as a new document:
+
+```json
+{
+  "data": {
+    "doctype": "Task",
+    "subject": "Complete documentation",
+    "status": "Open",
+    "priority": "High"
+  }
+}
+```
+
+## Count documents
+
+Get the count of documents matching filters (V2 only).
+
+### V2 endpoint
+
+```bash
+GET /api/v2/doctype/{doctype}/count
+```
+
+### Query parameters
+
+Supports the same filter parameters as the list endpoint.
+
+### Example request
+
+```bash
+curl -X GET \
+  -H "Authorization: token api_key:api_secret" \
+  'https://your-site.com/api/v2/doctype/Task/count?filters={"status":"Open"}'
+```
+
+### Example response
+
+```json
+{
+  "data": 42
+}
+```
+
+## Bulk operations (V2 only)
+
+V2 provides bulk operations for updating and deleting multiple documents.
+
+### Bulk update documents
+
+Update multiple documents of the same DocType:
+
+```bash
+POST /api/v2/document/{doctype}/bulk_update
+```
+
+#### Request body
+
+```json
+{
+  "docs": [
+    {"name": "TASK-0001", "status": "Closed"},
+    {"name": "TASK-0002", "status": "Closed"},
+    {"name": "TASK-0003", "priority": "High"}
+  ]
+}
+```
+
+#### Example request
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "docs": [
+      {"name": "TASK-0001", "status": "Closed"},
+      {"name": "TASK-0002", "status": "Closed"}
+    ]
+  }' \
+  https://your-site.com/api/v2/document/Task/bulk_update
+```
+
+#### Example response
+
+```json
+{
+  "data": {
+    "updated": ["TASK-0001", "TASK-0002"],
+    "failed": [],
+    "total": 2,
+    "success_count": 2,
+    "failure_count": 0
+  },
+  "docs": [
+    {"name": "TASK-0001", "status": "Closed", "modified": "2024-01-15 13:00:00"},
+    {"name": "TASK-0002", "status": "Closed", "modified": "2024-01-15 13:00:00"}
+  ]
+}
+```
+
+### Bulk delete documents
+
+Delete multiple documents of the same DocType:
+
+```bash
+POST /api/v2/document/{doctype}/bulk_delete
+```
+
+#### Request body
+
+```json
+{
+  "names": ["TASK-0001", "TASK-0002", "TASK-0003"]
+}
+```
+
+#### Example request
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{"names": ["TASK-0001", "TASK-0002"]}' \
+  https://your-site.com/api/v2/document/Task/bulk_delete
+```
+
+#### Example response
+
+```json
+{
+  "data": {
+    "deleted": ["TASK-0001", "TASK-0002"],
+    "failed": [],
+    "total": 2,
+    "success_count": 2,
+    "failure_count": 0
+  }
+}
+```
+
+### Cross-DocType bulk operations
+
+Bulk update or delete documents across different DocTypes:
+
+```bash
+POST /api/v2/method/bulk_update
+POST /api/v2/method/bulk_delete
+```
+
+#### Request body for bulk_update
+
+```json
+{
+  "docs": [
+    {"doctype": "Task", "name": "TASK-0001", "status": "Closed"},
+    {"doctype": "ToDo", "name": "TODO-0001", "status": "Closed"}
+  ]
+}
+```
+
+#### Request body for bulk_delete
+
+```json
+{
+  "docs": [
+    {"doctype": "Task", "name": "TASK-0001"},
+    {"doctype": "ToDo", "name": "TODO-0001"}
+  ]
+}
+```
+
+### Async bulk operations
+
+For large bulk operations (default threshold: 20 documents), the operation is queued as a background job:
+
+#### Response
+
+HTTP Status: `202 Accepted`
+
+```json
+{
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
+```
+
+You can configure the threshold in your site config:
+
+```python
+# site_config.json
+{
+  "bulk_operation_async_threshold": 50  # Global threshold
+}
+
+# Or per-doctype
+{
+  "bulk_operation_async_threshold": {
+    "Task": 100,
+    "*": 20  # Default for other doctypes
+  }
+}
+```
+
+## Execute document method
+
+Execute a whitelisted method on a document.
+
+### V1 endpoint
+
+```bash
+POST /api/resource/{doctype}/{name}?run_method={method}
+```
+
+### V2 endpoint
+
+```bash
+GET /api/v2/document/{doctype}/{name}/method/{method}
+POST /api/v2/document/{doctype}/{name}/method/{method}
+```
+
+### Example: Submit a document
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  https://your-site.com/api/v2/document/Task/TASK-0001/method/submit
+```
+
+### Example: Custom method with parameters
+
+```bash
+curl -X POST \
+  -H "Authorization: token api_key:api_secret" \
+  -H "Content-Type: application/json" \
+  -d '{"days": 7}' \
+  https://your-site.com/api/v2/document/Task/TASK-0001/method/extend_deadline
+```
+
+The method must be whitelisted in the DocType controller:
+
+```python
+from frappe.model.document import Document
+import frappe
+
+class Task(Document):
+    @frappe.whitelist()
+    def extend_deadline(self, days):
+        """
+        Extend task deadline by specified number of days.
+        """
+        from frappe.utils import add_days, getdate
+        
+        self.deadline = add_days(getdate(self.deadline), int(days))
+        self.save()
+        
+        return {"message": f"Deadline extended by {days} days"}
+```
+
+## Permissions
+
+All resource endpoints respect Frappe's permission system:
+
+- **Read**: Required for GET operations
+- **Write**: Required for PUT/PATCH operations
+- **Create**: Required for POST operations
+- **Delete**: Required for DELETE operations
+
+Permissions are checked based on:
+- User roles
+- DocType permissions
+- Document-level permissions (user permissions)
+- Field-level permissions
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Method endpoints" href="/api/rest/methods" icon="code">
+    Call custom Python methods via API
+  </Card>
+  <Card title="Authentication" href="/api/rest/authentication" icon="key">
+    Learn about authentication methods
+  </Card>
+</CardGroup>

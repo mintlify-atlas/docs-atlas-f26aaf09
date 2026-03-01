@@ -1,0 +1,265 @@
+---
+title: Authentication
+description: Frappe Framework provides a comprehensive authentication system with session management, two-factor authentication, and IP restrictions
+---
+
+Frappe Framework includes a robust authentication system that handles user login, session management, password validation, and security features.
+
+## Login flow
+
+The authentication process is handled by the `LoginManager` class:
+
+```python
+from frappe.auth import LoginManager
+
+# Login is automatically handled when user posts to /api/method/login
+login_manager = LoginManager()
+```
+
+### Login process
+
+1. User submits credentials to `/api/method/login`
+2. System validates username and password
+3. Two-factor authentication (if enabled)
+4. Session creation
+5. User information is set in cookies
+
+## Session management
+
+Frappe uses session-based authentication with cookies:
+
+```python
+class LoginManager:
+    def make_session(self, resume=False):
+        """Create a new session for the user"""
+        frappe.local.session_obj = Session(
+            user=self.user,
+            resume=resume,
+            full_name=self.full_name,
+            user_type=self.user_type
+        )
+```
+
+Sessions are stored in Redis and include:
+
+- Session ID (sid)
+- User information
+- CSRF token
+- Session expiry time
+
+## Password authentication
+
+Password validation is handled by the authentication system:
+
+```python
+def authenticate(self, user=None, pwd=None):
+    """Authenticate user credentials"""
+    if not (user and pwd):
+        self.fail(_("Incomplete login details"))
+    
+    # Check password size limit
+    if len(pwd) > MAX_PASSWORD_SIZE:
+        self.fail(_("Password size exceeded"))
+    
+    # Validate credentials
+    user = User.find_by_credentials(user, pwd)
+    
+    if not user.is_authenticated:
+        self.fail("Invalid login credentials")
+```
+
+## Two-factor authentication
+
+Frappe supports two-factor authentication (2FA) with OTP:
+
+```python
+from frappe.twofactor import should_run_2fa, authenticate_for_2factor
+
+if should_run_2fa(self.user):
+    authenticate_for_2factor(self.user)
+    if not confirm_otp_token(self):
+        return False
+```
+
+Users can enable 2FA in their user settings. The system supports:
+
+- Time-based OTP (TOTP)
+- SMS-based OTP
+- Email-based OTP
+
+## Login attempt tracking
+
+Frappe tracks failed login attempts to prevent brute force attacks:
+
+```python
+class LoginAttemptTracker:
+    """Track login attempts and lock accounts after too many failures"""
+    
+    def __init__(self, key, max_consecutive_login_attempts=3, lock_interval=300):
+        self.key = key
+        self.lock_interval = timedelta(seconds=lock_interval)
+        self.max_failed_logins = max_consecutive_login_attempts
+    
+    def add_failure_attempt(self):
+        """Log failed login attempt"""
+        # Increment failure count
+        # Lock account if threshold exceeded
+    
+    def is_user_allowed(self):
+        """Check if user is allowed to login"""
+        # Return False if account is locked
+```
+
+Configure login attempt limits in System Settings:
+
+- `allow_consecutive_login_attempts`: Maximum failed attempts
+- `allow_login_after_fail`: Lock duration in seconds
+
+## IP address restrictions
+
+Restrict user access by IP address:
+
+```python
+def validate_ip_address(user):
+    """Check if user is logging in from allowed IP"""
+    user_info = frappe.get_cached_doc("User", user)
+    ip_list = user_info.get_restricted_ip_list()
+    
+    if not ip_list:
+        return
+    
+    for ip in ip_list:
+        if frappe.local.request_ip.startswith(ip):
+            return
+    
+    frappe.throw(_("Access not allowed from this IP Address"))
+```
+
+Set allowed IPs in the User DocType's "Allowed IP Addresses" field.
+
+## Time-based restrictions
+
+Restrict login to specific hours:
+
+```python
+def validate_hour(self):
+    """Check if user is logging in during allowed hours"""
+    login_before = cint(frappe.db.get_value("User", self.user, "login_before"))
+    login_after = cint(frappe.db.get_value("User", self.user, "login_after"))
+    
+    current_hour = int(now_datetime().strftime("%H"))
+    
+    if login_before and current_hour >= login_before:
+        frappe.throw(_("Login not allowed at this time"))
+```
+
+## API authentication
+
+Frappe supports multiple API authentication methods:
+
+### API keys
+
+```python
+def validate_api_key_secret(api_key, api_secret):
+    """Validate API key and secret"""
+    docname = frappe.db.get_value(
+        "User",
+        filters={"api_key": api_key, "enabled": True},
+        fieldname="name"
+    )
+    
+    if not docname:
+        raise frappe.AuthenticationError
+    
+    doc_secret = get_decrypted_password("User", docname, "api_secret")
+    
+    if api_secret == doc_secret:
+        frappe.set_user(docname)
+```
+
+### OAuth 2.0
+
+```python
+def validate_oauth(authorization_header):
+    """Authenticate using OAuth 2.0 Bearer token"""
+    from frappe.integrations.oauth2 import get_oauth_server
+    
+    token = authorization_header[1]
+    valid, request = get_oauth_server().verify_request(
+        uri, http_method, body, headers, required_scopes
+    )
+    
+    if valid:
+        user = frappe.db.get_value("OAuth Bearer Token", token, "user")
+        frappe.set_user(user)
+```
+
+## CSRF protection
+
+Frappe includes CSRF token validation for unsafe HTTP methods:
+
+```python
+def validate_csrf_token(self):
+    """Match CSRF token from request with session token"""
+    if frappe.request.method not in UNSAFE_HTTP_METHODS:
+        return
+    
+    saved_token = frappe.session.data.csrf_token
+    request_token = frappe.get_request_header("X-Frappe-CSRF-Token")
+    
+    if request_token != saved_token:
+        frappe.throw(_("Invalid Request"), frappe.CSRFTokenError)
+```
+
+## Password reset
+
+Force users to reset passwords periodically:
+
+```python
+def force_user_to_reset_password(self):
+    """Check if user needs to reset password"""
+    reset_pwd_after_days = cint(
+        frappe.get_system_settings("force_user_to_reset_password")
+    )
+    
+    if reset_pwd_after_days:
+        last_password_reset_date = frappe.db.get_value(
+            "User", self.user, "last_password_reset_date"
+        )
+        last_pwd_reset_days = date_diff(today(), last_password_reset_date)
+        
+        if last_pwd_reset_days > reset_pwd_after_days:
+            return True
+```
+
+## Logout
+
+End user session and clear cookies:
+
+```python
+def logout(self, user=None):
+    """Logout user and clear session"""
+    if not user:
+        user = frappe.session.user
+    
+    self.run_trigger("on_logout")
+    delete_session(frappe.session.sid, user=user)
+    self.clear_cookies()
+```
+
+## Authentication hooks
+
+Customize authentication behavior using hooks:
+
+```python
+# In hooks.py
+auth_hooks = [
+    "myapp.auth.custom_auth"
+]
+
+# Custom authentication function
+def custom_auth():
+    """Custom authentication logic"""
+    # Add custom authentication logic here
+    pass
+```

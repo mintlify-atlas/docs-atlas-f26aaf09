@@ -1,0 +1,343 @@
+---
+title: Printing
+description: Generate PDFs and printable documents with customizable print formats in Frappe Framework
+---
+
+Frappe Framework provides a powerful printing system that allows you to generate PDFs and printable HTML documents with customizable templates.
+
+## Print formats
+
+Print formats define how documents are rendered for printing. Frappe supports multiple types of print formats:
+
+### Standard print format
+
+The default print format that comes with each DocType:
+
+```python
+import frappe
+
+# Get standard print HTML
+html = frappe.get_print(
+    "Sales Order",
+    "SO-001",
+    print_format="Standard"
+)
+```
+
+### Custom print formats
+
+Create custom print formats using Jinja templates:
+
+```python
+# In Print Format DocType
+print_format = frappe.get_doc({
+    "doctype": "Print Format",
+    "name": "Sales Order Custom",
+    "doc_type": "Sales Order",
+    "print_format_type": "Jinja",
+    "html": """
+        <div class="print-format">
+            <h1>{{ doc.name }}</h1>
+            <p>Customer: {{ doc.customer }}</p>
+            <p>Date: {{ doc.transaction_date }}</p>
+            
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Quantity</th>
+                        <th>Rate</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in doc.items %}
+                    <tr>
+                        <td>{{ item.item_name }}</td>
+                        <td>{{ item.qty }}</td>
+                        <td>{{ item.rate }}</td>
+                        <td>{{ item.amount }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <p><strong>Total: {{ doc.grand_total }}</strong></p>
+        </div>
+    """
+}).insert()
+```
+
+## Generating PDFs
+
+Generate PDF documents from print formats:
+
+```python
+import frappe
+from frappe.utils.pdf import get_pdf
+
+# Get PDF content
+html = frappe.get_print("Sales Order", "SO-001")
+pdf = get_pdf(html)
+
+# Save PDF to file
+with open("/path/to/file.pdf", "wb") as f:
+    f.write(pdf)
+
+# Or attach to email
+frappe.sendmail(
+    recipients=["customer@example.com"],
+    subject="Your Sales Order",
+    message="Please find attached sales order.",
+    attachments=[{
+        "fname": "sales_order.pdf",
+        "fcontent": pdf
+    }]
+)
+```
+
+## Print settings
+
+Customize global print settings:
+
+```python
+# Get print settings
+print_settings = frappe.get_single("Print Settings")
+
+# Configure settings
+print_settings.update({
+    "send_print_as_pdf": 1,
+    "pdf_page_size": "A4",
+    "repeat_header_footer": 1,
+    "print_style": "Modern"
+})
+print_settings.save()
+```
+
+### Page settings
+
+Configure page size and orientation:
+
+```python
+# In Print Format
+print_format.page_size = "A4"  # A4, A5, Letter, Legal
+print_format.orientation = "Portrait"  # Portrait or Landscape
+print_format.margin_top = 15
+print_format.margin_bottom = 15
+print_format.margin_left = 15
+print_format.margin_right = 15
+```
+
+## Print templates
+
+Use Jinja2 templating in print formats:
+
+```jinja
+{# Access document fields #}
+{{ doc.name }}
+{{ doc.customer_name }}
+{{ doc.posting_date }}
+
+{# Format currency #}
+{{ frappe.utils.fmt_money(doc.grand_total, currency=doc.currency) }}
+
+{# Format dates #}
+{{ frappe.utils.formatdate(doc.posting_date, "dd-MM-yyyy") }}
+
+{# Loop through child table #}
+{% for item in doc.items %}
+    <tr>
+        <td>{{ item.item_code }}</td>
+        <td>{{ item.qty }}</td>
+    </tr>
+{% endfor %}
+
+{# Conditional rendering #}
+{% if doc.discount_amount %}
+    <p>Discount: {{ doc.discount_amount }}</p>
+{% endif %}
+
+{# Access meta information #}
+{{ frappe.get_meta(doc.doctype).get_field("customer").label }}
+```
+
+## Letter head
+
+Add company branding to print formats:
+
+```python
+# Create letter head
+letter_head = frappe.get_doc({
+    "doctype": "Letter Head",
+    "letter_head_name": "Company Letter Head",
+    "is_default": 1,
+    "header": "<div style='text-align: center;'><h1>Company Name</h1></div>",
+    "footer": "<div style='text-align: center;'><small>Company Address</small></div>"
+}).insert()
+
+# Letter head is automatically included in prints
+```
+
+## Print styles
+
+Customize print appearance with CSS:
+
+```python
+# Create print style
+print_style = frappe.get_doc({
+    "doctype": "Print Style",
+    "name": "Modern Style",
+    "css": """
+        .print-format {
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+        }
+        
+        .print-format h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        
+        .print-format table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .print-format table th,
+        .print-format table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .print-format table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    """
+}).insert()
+```
+
+## Raw printing
+
+For thermal printers and POS systems:
+
+```python
+# Create raw print format
+raw_print = frappe.get_doc({
+    "doctype": "Print Format",
+    "name": "POS Receipt",
+    "doc_type": "Sales Invoice",
+    "print_format_type": "Jinja",
+    "raw_printing": 1,
+    "html": """
+        {{ doc.company }}
+        ================================
+        Invoice: {{ doc.name }}
+        Date: {{ doc.posting_date }}
+        Customer: {{ doc.customer_name }}
+        ================================
+        {% for item in doc.items %}
+        {{ item.item_name }}
+        {{ item.qty }} x {{ item.rate }} = {{ item.amount }}
+        {% endfor %}
+        ================================
+        Total: {{ doc.grand_total }}
+    """
+}).insert()
+```
+
+## Print preview
+
+Generate print preview without PDF conversion:
+
+```python
+import frappe
+
+# Get HTML preview
+html = frappe.get_print(
+    "Sales Order",
+    "SO-001",
+    print_format="Standard",
+    no_letterhead=False
+)
+
+# Return as web page
+frappe.respond_as_web_page(
+    "Print Preview",
+    html,
+    print_format=True
+)
+```
+
+## Batch printing
+
+Print multiple documents at once:
+
+```python
+import frappe
+from frappe.utils.pdf import get_pdf
+
+def print_multiple_documents(doctype, names, print_format="Standard"):
+    """Print multiple documents as single PDF"""
+    html_content = ""
+    
+    for name in names:
+        html = frappe.get_print(
+            doctype,
+            name,
+            print_format=print_format
+        )
+        html_content += html + '<div style="page-break-after: always;"></div>'
+    
+    # Generate combined PDF
+    pdf = get_pdf(html_content)
+    return pdf
+
+# Usage
+pdf = print_multiple_documents(
+    "Sales Order",
+    ["SO-001", "SO-002", "SO-003"]
+)
+```
+
+## Print language
+
+Generate prints in different languages:
+
+```python
+import frappe
+
+# Set print language
+html = frappe.get_print(
+    "Sales Order",
+    "SO-001",
+    print_format="Standard",
+    language="de"  # German
+)
+```
+
+## Custom print buttons
+
+Add custom print buttons to forms:
+
+```python
+# In DocType's client script
+frappe.ui.form.on('Sales Order', {
+    refresh: function(frm) {
+        frm.add_custom_button(__('Print Packing Slip'), function() {
+            frappe.ui.get_print_settings(
+                false,
+                function(print_settings) {
+                    frappe.render_pdf(
+                        frm.doctype,
+                        frm.doc.name,
+                        "Packing Slip"
+                    );
+                }
+            );
+        }, __('Print'));
+    }
+});
+```

@@ -1,80 +1,439 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Build your first Frappe app in under 10 minutes
 ---
 
-## Get started in three steps
+This guide walks you through creating a simple "Library Management" app to demonstrate Frappe's core features. By the end, you'll have a working application with data entry forms, list views, and a REST API.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+  **Prerequisites:** Complete the [installation guide](/installation) and have a Frappe site running locally.
+</Note>
 
-### Step 1: Set up your local environment
+## Create your first app
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+Apps in Frappe are Python packages that contain your business logic, DocTypes, and customizations.
+
+<Steps>
+  <Step title="Create a new app">
+    Use bench to scaffold a new application:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    cd ~/frappe-bench
+    bench new-app library_management
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    You'll be prompted for:
+    - **App title:** Library Management
+    - **App description:** Manage library books and members
+    - **Publisher:** Your name
+    - **Email:** Your email
+    - **License:** MIT
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    This creates a new app directory at `~/frappe-bench/apps/library_management` with the following structure:
+    
+    ```
+    library_management/
+    ├── library_management/
+    │   ├── __init__.py
+    │   ├── hooks.py          # App configuration and hooks
+    │   ├── modules.txt       # List of modules
+    │   └── public/           # Static assets
+    ├── setup.py
+    └── requirements.txt
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Install the app on your site">
+    ```bash
+    bench --site frappe.localhost install-app library_management
+    ```
+    
+    This installs the app and makes it available on your site.
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Add a module">
+    Create a module to organize your DocTypes:
+    
+    ```bash
+    echo "Library Management" > apps/library_management/library_management/modules.txt
+    ```
+  </Step>
+</Steps>
 
-### Step 3: Go live
+## Create your first DocType
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+DocTypes are Frappe's metadata models. They define the structure of your data and automatically generate forms, APIs, and database tables.
+
+<Steps>
+  <Step title="Create the Article DocType">
+    We'll create an Article DocType to represent library books:
+    
+    1. Open your browser and go to `http://frappe.localhost:8000/app`
+    2. In the search bar (Ctrl+K or ⌘K), type "New DocType"
+    3. Fill in the following:
+    
+    <AccordionGroup>
+      <Accordion title="Basic information">
+        - **Name:** Article
+        - **Module:** Library Management
+        - **Is Submittable:** Unchecked (for now)
+      </Accordion>
+      
+      <Accordion title="Fields">
+        Add these fields by clicking "Add Row" in the Fields table:
+        
+        | Label | Type | Options | Mandatory |
+        |-------|------|---------|----------|
+        | Article Name | Data | - | Yes |
+        | Image | Attach Image | - | No |
+        | Author | Data | - | No |
+        | Description | Text Editor | - | No |
+        | ISBN | Data | - | No |
+        | Status | Select | Issued\nAvailable | Yes |
+        | Publisher | Data | - | No |
+      </Accordion>
+    </AccordionGroup>
+    
+    4. Set **Naming** to "field:article_name"
+    5. Click **Save**
+  </Step>
+
+  <Step title="Create your first article">
+    1. Search for "Article List" in the search bar
+    2. Click **New**
+    3. Fill in the details:
+       - Article Name: The Alchemist
+       - Author: Paulo Coelho
+       - Status: Available
+    4. Click **Save**
+    
+    <Tip>
+      You now have a working CRUD interface with zero code! Frappe automatically generated the form, list view, and database schema.
+    </Tip>
+  </Step>
+</Steps>
+
+## Add server-side logic
+
+Let's add Python code to validate and process Article documents.
+
+<Steps>
+  <Step title="Create the Python controller">
+    Create a file at `apps/library_management/library_management/library_management/doctype/article/article.py`:
+    
+    ```python
+    # Copyright (c) 2024, Your Name and contributors
+    # For license information, please see license.txt
+
+    import frappe
+    from frappe.model.document import Document
+
+    class Article(Document):
+        # Validation method - runs before saving
+        def before_save(self):
+            if not self.isbn:
+                frappe.msgprint("Consider adding an ISBN number")
+        
+        # Validation method - can throw errors
+        def validate(self):
+            if self.status == "Issued" and not self.publisher:
+                frappe.throw("Publisher is required for issued articles")
+        
+        # Event handler - runs after saving
+        def after_insert(self):
+            frappe.msgprint(f"Article {self.article_name} has been created!")
+    ```
+    
+    <Note>
+      Frappe automatically calls these methods at the right time in the document lifecycle:
+      - `before_save()` - Before saving to database
+      - `validate()` - During validation
+      - `after_insert()` - After creating a new document
+      - `on_update()` - After updating
+      - `on_trash()` - Before deletion
+    </Note>
+  </Step>
+
+  <Step title="Test the validation">
+    1. Try creating a new Article with Status = "Issued" but no Publisher
+    2. You should see an error message
+    3. Fill in the Publisher field and save successfully
+  </Step>
+</Steps>
+
+## Add a whitelisted API method
+
+Create a custom API endpoint that can be called from the frontend or external systems.
+
+<Steps>
+  <Step title="Add an API method">
+    Add this method to your `article.py` file:
+    
+    ```python
+    @frappe.whitelist()
+    def get_articles_by_status(status):
+        """Get all articles with the given status"""
+        articles = frappe.get_all(
+            "Article",
+            filters={"status": status},
+            fields=["name", "article_name", "author", "publisher"]
+        )
+        return articles
+    ```
+    
+    The `@frappe.whitelist()` decorator makes this method accessible via HTTP.
+  </Step>
+
+  <Step title="Test the API">
+    Open your browser console and run:
+    
+    ```javascript
+    frappe.call({
+        method: "library_management.library_management.doctype.article.article.get_articles_by_status",
+        args: {
+            status: "Available"
+        },
+        callback: function(r) {
+            console.log(r.message);
+        }
+    });
+    ```
+    
+    Or test with curl:
+    
+    ```bash
+    curl -X POST http://frappe.localhost:8000/api/method/library_management.library_management.doctype.article.article.get_articles_by_status \
+      -H "Content-Type: application/json" \
+      -d '{"status": "Available"}'
+    ```
+  </Step>
+</Steps>
+
+## Use the automatic REST API
+
+Frappe automatically generates REST API endpoints for all DocTypes.
+
+<CodeGroup>
+```bash Get list
+# Get all articles
+curl http://frappe.localhost:8000/api/resource/Article
+```
+
+```bash Get single
+# Get a specific article
+curl http://frappe.localhost:8000/api/resource/Article/The%20Alchemist
+```
+
+```bash Create
+# Create a new article
+curl -X POST http://frappe.localhost:8000/api/resource/Article \
+  -H "Content-Type: application/json" \
+  -d '{
+    "article_name": "1984",
+    "author": "George Orwell",
+    "status": "Available"
+  }'
+```
+
+```bash Update
+# Update an article
+curl -X PUT http://frappe.localhost:8000/api/resource/Article/1984 \
+  -H "Content-Type: application/json" \
+  -d '{"status": "Issued"}'
+```
+</CodeGroup>
+
+<Note>
+  For authenticated requests, you'll need to include API keys or session cookies. See [REST API authentication](/api/rest/authentication) for details.
+</Note>
+
+## Add a child table
+
+Let's create a Library Member DocType with a child table for tracking borrowed articles.
+
+<Steps>
+  <Step title="Create Library Member DocType">
+    Create a new DocType named "Library Member" with these fields:
+    
+    | Label | Type | Options |
+    |-------|------|--------|
+    | Full Name | Data | - |
+    | Email | Data | - |
+    | Phone | Data | - |
+    | Borrowed Articles | Table | Library Transaction |
+  </Step>
+
+  <Step title="Create Library Transaction child DocType">
+    Create another DocType named "Library Transaction":
+    - Check **Is Child Table**
+    - Add these fields:
+      
+      | Label | Type | Options |
+      |-------|------|--------|
+      | Article | Link | Article |
+      | Date Borrowed | Date | - |
+      | Date Returned | Date | - |
+  </Step>
+
+  <Step title="Test the relationship">
+    1. Create a new Library Member
+    2. In the "Borrowed Articles" table, add a row
+    3. Select an Article and set the Date Borrowed
+    4. Save
+    
+    The child records are automatically saved with the parent!
+  </Step>
+</Steps>
+
+## Add client-side scripting
+
+Customize form behavior with JavaScript.
+
+<Steps>
+  <Step title="Create a client script">
+    Create `article.js` in the same directory as `article.py`:
+    
+    ```javascript
+    frappe.ui.form.on('Article', {
+        // Runs when form loads
+        refresh: function(frm) {
+            // Add a custom button
+            frm.add_custom_button('Check Availability', function() {
+                if (frm.doc.status === 'Available') {
+                    frappe.msgprint('This article is available!');
+                } else {
+                    frappe.msgprint('This article is currently issued.');
+                }
+            });
+        },
+        
+        // Runs when status field changes
+        status: function(frm) {
+            if (frm.doc.status === 'Issued') {
+                frappe.msgprint('Remember to update the return date!');
+            }
+        }
+    });
+    ```
+  </Step>
+
+  <Step title="Clear cache and reload">
+    ```bash
+    bench --site frappe.localhost clear-cache
+    ```
+    
+    Refresh your browser to see the custom button and behavior.
+  </Step>
+</Steps>
+
+## Query the database
+
+Frappe provides multiple ways to query your data.
+
+<CodeGroup>
+```python ORM (get_all)
+# Get all available articles
+articles = frappe.get_all(
+    "Article",
+    filters={"status": "Available"},
+    fields=["name", "article_name", "author"],
+    order_by="article_name asc"
+)
+```
+
+```python Get single document
+# Get full document with all fields
+article = frappe.get_doc("Article", "The Alchemist")
+print(article.author)  # Paulo Coelho
+
+# Update and save
+article.status = "Issued"
+article.save()
+```
+
+```python Query Builder
+# Complex queries with PyPika
+Article = frappe.qb.DocType("Article")
+
+query = (
+    frappe.qb.from_(Article)
+    .select(Article.name, Article.article_name, Article.author)
+    .where(Article.status == "Available")
+    .where(Article.author.like("%Paulo%"))
+    .orderby(Article.article_name)
+)
+
+results = query.run(as_dict=True)
+```
+
+```python Raw SQL
+# When you need raw SQL
+results = frappe.db.sql("""
+    SELECT name, article_name, author
+    FROM `tabArticle`
+    WHERE status = 'Available'
+    ORDER BY article_name
+""", as_dict=True)
+```
+</CodeGroup>
+
+## Background jobs
+
+For long-running tasks, use Frappe's background job queue.
+
+```python
+import frappe
+from frappe.utils.background_jobs import enqueue
+
+def send_overdue_notifications():
+    """Send notifications for overdue articles"""
+    # Long running task...
+    pass
+
+# Queue the job
+enqueue(
+    send_overdue_notifications,
+    queue='long',
+    timeout=300
+)
+```
+
+## What you've learned
+
+Congratulations! You've built a working Frappe application with:
+
+<CardGroup cols={2}>
+  <Card title="DocTypes" icon="database">
+    Metadata-driven data models
+  </Card>
+  <Card title="Server-side logic" icon="code">
+    Python controllers and validation
+  </Card>
+  <Card title="REST API" icon="plug">
+    Automatic and custom endpoints
+  </Card>
+  <Card title="Client scripting" icon="wand-magic-sparkles">
+    Form customization with JavaScript
+  </Card>
+</CardGroup>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Architecture overview" icon="sitemap" href="/architecture">
+    Understand Frappe's architecture
+  </Card>
+  <Card title="DocType deep dive" icon="book" href="/concepts/doctype">
+    Master DocTypes and field types
+  </Card>
+  <Card title="Permissions" icon="shield" href="/concepts/permissions">
+    Set up role-based permissions
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/concepts/hooks">
+    Extend Frappe with hooks
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+<Tip>
+  **Join the community!** Ask questions and share your apps on the [Frappe Forum](https://discuss.frappe.io).
+</Tip>

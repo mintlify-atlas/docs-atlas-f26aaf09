@@ -1,0 +1,286 @@
+---
+title: Bench commands
+description: Core bench commands for managing Frappe Framework
+---
+
+Bench is the command-line interface for managing Frappe Framework sites and applications. This page covers the core bench commands for general operations.
+
+## Version information
+
+Display version information for all installed apps.
+
+```bash
+bench version
+```
+
+**Options:**
+- `-f, --format` - Output format: `plain`, `table`, `json`, or `legacy` (default: `plain`)
+
+**Example output:**
+```bash
+$ bench version --format table
+┌─────────┬─────────┬────────┬─────────┐
+│ App     │ Version │ Branch │ Commit  │
+├─────────┼─────────┼────────┼─────────┤
+│ frappe  │ 15.0.0  │ main   │ a1b2c3d │
+│ erpnext │ 15.0.0  │ main   │ e4f5g6h │
+└─────────┴─────────┴────────┴─────────┘
+```
+
+## List sites
+
+List all sites in the current bench.
+
+```bash
+bench list-sites
+```
+
+**Options:**
+- `--json` - Output in JSON format
+
+**Example output:**
+```bash
+$ bench list-sites
+Available sites:
+* mysite.local
+  testsite.local
+```
+
+The asterisk (*) indicates the default site.
+
+## Console access
+
+Start an interactive IPython console for a site.
+
+```bash
+bench --site [sitename] console
+```
+
+**Options:**
+- `--autoreload` - Automatically reload code changes
+
+**Example:**
+```bash
+$ bench --site mysite.local console
+Apps in this namespace:
+frappe, erpnext
+
+In [1]: frappe.db.get_value('User', 'Administrator', 'email')
+Out[1]: 'admin@example.com'
+```
+
+## Jupyter notebook
+
+Start a Jupyter notebook server for interactive development.
+
+```bash
+bench --site [sitename] jupyter
+```
+
+This creates a `jupyter_notebooks` folder in your site directory and starts the Jupyter server.
+
+**Example initialization code:**
+```python
+import frappe
+frappe.init('mysite.local', sites_path='/path/to/sites')
+frappe.connect()
+frappe.local.lang = frappe.get_system_settings('language')
+frappe.db.connect()
+```
+
+## Execute Python methods
+
+Execute a Python method from the command line.
+
+```bash
+bench --site [sitename] execute [method]
+```
+
+**Options:**
+- `--args` - JSON string of positional arguments
+- `--kwargs` - JSON string of keyword arguments
+- `--profile` - Profile the execution
+
+**Example:**
+```bash
+$ bench --site mysite.local execute frappe.utils.get_datetime_str
+2026-03-01 12:30:45
+```
+
+## Make requests
+
+Run HTTP requests as an admin user.
+
+```bash
+bench --site [sitename] request --args "?cmd=test&key=value"
+```
+
+**Options:**
+- `--args` - Arguments like `?cmd=test&key=value` or `/api/request/method?..`
+- `--path` - Path to request JSON file
+
+**Example:**
+```bash
+$ bench --site mysite.local request --args "/api/method/frappe.auth.get_logged_user"
+```
+
+## Configuration management
+
+Insert or update values in site_config.json.
+
+```bash
+bench --site [sitename] set-config [key] [value]
+```
+
+**Options:**
+- `-g, --global` - Set value in bench config instead of site config
+- `-p, --parse` - Evaluate value as a Python object
+
+**Examples:**
+```bash
+# Set a string value
+$ bench --site mysite.local set-config db_name "_mysite"
+
+# Set a boolean value
+$ bench --site mysite.local set-config -p developer_mode True
+
+# Set a global configuration
+$ bench set-config -g http_port 8001
+```
+
+## View configuration
+
+Display site configuration.
+
+```bash
+bench --site [sitename] show-config
+```
+
+**Options:**
+- `-f, --format` - Output format: `text` or `json` (default: `text`)
+
+**Example output:**
+```bash
+$ bench --site mysite.local show-config
+┌──────────────────┬─────────────────────────┐
+│ Config           │ Value                   │
+├──────────────────┼─────────────────────────┤
+│ db_name          │ _mysite                 │
+│ db_type          │ mariadb                 │
+│ developer_mode   │ 1                       │
+└──────────────────┴─────────────────────────┘
+```
+
+## Build assets
+
+Compile JavaScript and CSS source files.
+
+```bash
+bench build
+```
+
+**Options:**
+- `--app` - Build assets for a specific app
+- `--apps` - Build assets for multiple apps (comma-separated)
+- `--hard-link` - Copy files instead of symlinking
+- `--production` - Build in production mode (minified)
+- `--verbose` - Verbose output
+- `--force` - Force build instead of downloading pre-built assets
+- `--save-metafiles` - Save esbuild metafiles for bundle analysis
+
+**Examples:**
+```bash
+# Build all assets
+$ bench build
+
+# Build for specific app
+$ bench build --app erpnext
+
+# Production build
+$ bench build --production
+```
+
+## Watch assets
+
+Watch and compile files as they change (development mode).
+
+```bash
+bench watch
+```
+
+**Options:**
+- `--apps` - Watch specific apps (comma-separated)
+
+## Clear cache
+
+Clear cache, doctype cache, and defaults.
+
+```bash
+bench --site [sitename] clear-cache
+```
+
+Clears both server-side and website cache.
+
+## Clear website cache
+
+Clear only the website cache.
+
+```bash
+bench --site [sitename] clear-website-cache
+```
+
+## Serve development server
+
+Start the Frappe development web server.
+
+```bash
+bench --site [sitename] serve
+```
+
+**Options:**
+- `--port` - Port number (default: 8000)
+- `--profile` - Enable profiling
+- `--proxy` - Run behind a proxy (e.g., ngrok)
+- `--noreload` - Disable auto-reload
+- `--nothreading` - Disable threading
+- `--with-coverage` - Enable code coverage
+
+**Example:**
+```bash
+$ bench --site mysite.local serve --port 8080
+Listening on http://localhost:8080
+```
+
+## Create boilerplate app
+
+Create a new Frappe app with boilerplate code.
+
+```bash
+bench make-app [destination] [app_name]
+```
+
+**Options:**
+- `--no-git` - Don't initialize git repository
+
+**Example:**
+```bash
+$ bench make-app ../apps custom_app
+```
+
+## Create patch
+
+Create a new patch file interactively.
+
+```bash
+bench create-patch
+```
+
+This command walks you through creating a migration patch file.
+
+## Setup Chrome/Chromium
+
+Install and configure Chromium for PDF generation.
+
+```bash
+bench setup-chrome
+```

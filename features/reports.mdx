@@ -1,0 +1,458 @@
+---
+title: Reports
+description: Create powerful reports with Frappe's report builder including query reports, script reports, and custom report views
+---
+
+Frappe Framework provides a comprehensive reporting system that allows you to create various types of reports, from simple queries to complex analytical reports.
+
+## Report types
+
+Frappe supports three main report types:
+
+### Report Builder
+
+Drag-and-drop report creation without code:
+
+- Select fields from a DocType
+- Apply filters
+- Add sorting and grouping
+- Saved as Report DocType
+
+### Query Report
+
+SQL-based reports for complex queries:
+
+```python
+# report.py
+import frappe
+
+def execute(filters=None):
+    columns = [
+        {
+            "fieldname": "name",
+            "label": "Task ID",
+            "fieldtype": "Link",
+            "options": "Task",
+            "width": 150
+        },
+        {
+            "fieldname": "subject",
+            "label": "Subject",
+            "fieldtype": "Data",
+            "width": 300
+        },
+        {
+            "fieldname": "status",
+            "label": "Status",
+            "fieldtype": "Data",
+            "width": 100
+        }
+    ]
+    
+    data = frappe.db.sql("""
+        SELECT
+            name,
+            subject,
+            status
+        FROM
+            `tabTask`
+        WHERE
+            status = %(status)s
+        ORDER BY
+            creation DESC
+    """, filters, as_dict=1)
+    
+    return columns, data
+```
+
+### Script Report
+
+Python-based reports with full flexibility:
+
+```python
+# report.py
+import frappe
+from frappe import _
+
+def execute(filters=None):
+    columns = get_columns()
+    data = get_data(filters)
+    chart = get_chart_data(data)
+    report_summary = get_report_summary(data)
+    
+    return columns, data, None, chart, report_summary
+
+def get_columns():
+    return [
+        {
+            "fieldname": "customer",
+            "label": _("Customer"),
+            "fieldtype": "Link",
+            "options": "Customer",
+            "width": 200
+        },
+        {
+            "fieldname": "total_amount",
+            "label": _("Total Amount"),
+            "fieldtype": "Currency",
+            "width": 150
+        }
+    ]
+
+def get_data(filters):
+    # Custom logic to fetch and process data
+    return frappe.get_all(
+        "Sales Invoice",
+        filters={"docstatus": 1},
+        fields=["customer", "SUM(grand_total) as total_amount"],
+        group_by="customer"
+    )
+```
+
+## Creating query reports
+
+Query reports use SQL queries to fetch data:
+
+```python
+# myapp/myapp/report/sales_by_customer/sales_by_customer.py
+import frappe
+from frappe import _
+
+def execute(filters=None):
+    if not filters:
+        filters = {}
+    
+    columns = [
+        {
+            "fieldname": "customer",
+            "label": _("Customer"),
+            "fieldtype": "Link",
+            "options": "Customer",
+            "width": 200
+        },
+        {
+            "fieldname": "total_invoices",
+            "label": _("Total Invoices"),
+            "fieldtype": "Int",
+            "width": 120
+        },
+        {
+            "fieldname": "total_amount",
+            "label": _("Total Amount"),
+            "fieldtype": "Currency",
+            "width": 150
+        }
+    ]
+    
+    conditions = get_conditions(filters)
+    
+    data = frappe.db.sql(f"""
+        SELECT
+            customer,
+            COUNT(*) as total_invoices,
+            SUM(grand_total) as total_amount
+        FROM
+            `tabSales Invoice`
+        WHERE
+            docstatus = 1
+            {conditions}
+        GROUP BY
+            customer
+        ORDER BY
+            total_amount DESC
+    """, filters, as_dict=1)
+    
+    return columns, data
+
+def get_conditions(filters):
+    conditions = ""
+    
+    if filters.get("from_date"):
+        conditions += " AND posting_date >= %(from_date)s"
+    
+    if filters.get("to_date"):
+        conditions += " AND posting_date <= %(to_date)s"
+    
+    if filters.get("customer"):
+        conditions += " AND customer = %(customer)s"
+    
+    return conditions
+```
+
+## Report filters
+
+Define filters for reports:
+
+```javascript
+// sales_by_customer.js
+frappe.query_reports["Sales by Customer"] = {
+    "filters": [
+        {
+            "fieldname": "from_date",
+            "label": __("From Date"),
+            "fieldtype": "Date",
+            "default": frappe.datetime.add_months(frappe.datetime.get_today(), -1),
+            "reqd": 1
+        },
+        {
+            "fieldname": "to_date",
+            "label": __("To Date"),
+            "fieldtype": "Date",
+            "default": frappe.datetime.get_today(),
+            "reqd": 1
+        },
+        {
+            "fieldname": "customer",
+            "label": __("Customer"),
+            "fieldtype": "Link",
+            "options": "Customer"
+        },
+        {
+            "fieldname": "company",
+            "label": __("Company"),
+            "fieldtype": "Link",
+            "options": "Company",
+            "default": frappe.defaults.get_user_default("Company")
+        }
+    ]
+};
+```
+
+## Report charts
+
+Add charts to visualize report data:
+
+```python
+def get_chart_data(data):
+    """Generate chart data from report data"""
+    labels = [d.customer for d in data[:10]]  # Top 10 customers
+    values = [d.total_amount for d in data[:10]]
+    
+    return {
+        "data": {
+            "labels": labels,
+            "datasets": [
+                {
+                    "name": "Total Amount",
+                    "values": values
+                }
+            ]
+        },
+        "type": "bar",
+        "height": 300,
+        "colors": ["#7cd6fd"]
+    }
+```
+
+## Report summary
+
+Add summary statistics to reports:
+
+```python
+def get_report_summary(data):
+    """Generate summary statistics"""
+    total_amount = sum(d.total_amount for d in data)
+    total_invoices = sum(d.total_invoices for d in data)
+    avg_amount = total_amount / len(data) if data else 0
+    
+    return [
+        {
+            "value": total_amount,
+            "label": "Total Amount",
+            "datatype": "Currency",
+            "indicator": "Green"
+        },
+        {
+            "value": total_invoices,
+            "label": "Total Invoices",
+            "datatype": "Int",
+            "indicator": "Blue"
+        },
+        {
+            "value": avg_amount,
+            "label": "Average Amount",
+            "datatype": "Currency",
+            "indicator": "Grey"
+        }
+    ]
+```
+
+## Custom columns
+
+Add custom columns to reports dynamically:
+
+```python
+def execute(filters=None):
+    columns = get_columns(filters)
+    data = get_data(filters)
+    
+    # Add custom column based on filter
+    if filters.get("show_profit"):
+        columns.append({
+            "fieldname": "profit",
+            "label": "Profit",
+            "fieldtype": "Currency",
+            "width": 150
+        })
+        
+        # Calculate profit for each row
+        for row in data:
+            row["profit"] = row["total_amount"] - row["total_cost"]
+    
+    return columns, data
+```
+
+## Tree reports
+
+Create hierarchical reports:
+
+```python
+def execute(filters=None):
+    columns = get_columns()
+    data = get_data(filters)
+    
+    # Organize data in tree structure
+    tree_data = []
+    for row in data:
+        tree_data.append({
+            "customer": row.customer,
+            "total_amount": row.total_amount,
+            "indent": 0,
+            "has_children": True
+        })
+        
+        # Add child rows
+        invoices = get_invoices(row.customer)
+        for inv in invoices:
+            tree_data.append({
+                "customer": inv.name,
+                "total_amount": inv.grand_total,
+                "indent": 1,
+                "has_children": False
+            })
+    
+    return columns, tree_data
+```
+
+## Prepared reports
+
+Generate reports in background for better performance:
+
+```python
+# Enable prepared report
+report = frappe.get_doc("Report", "Sales by Customer")
+report.prepared_report = 1
+report.save()
+
+# Reports are auto-generated based on filters
+# Users see cached results for faster loading
+```
+
+## Export reports
+
+Export reports to various formats:
+
+```python
+from frappe.desk.query_report import export_query
+
+# Export to Excel
+export_query(
+    report_name="Sales by Customer",
+    file_format_type="Excel",
+    filters={"from_date": "2024-01-01", "to_date": "2024-12-31"}
+)
+
+# Export to CSV
+export_query(
+    report_name="Sales by Customer",
+    file_format_type="CSV",
+    filters={"from_date": "2024-01-01", "to_date": "2024-12-31"}
+)
+```
+
+## Report permissions
+
+Control who can access reports:
+
+```python
+# In Report DocType
+report.roles = [
+    {"role": "Sales Manager"},
+    {"role": "Accounts Manager"}
+]
+report.save()
+
+# Check permission in code
+if not frappe.has_permission("Sales Invoice", "report"):
+    frappe.throw("You don't have permission to view this report")
+```
+
+## Report scripting
+
+Add custom JavaScript to reports:
+
+```javascript
+// sales_by_customer.js
+frappe.query_reports["Sales by Customer"] = {
+    "filters": [...],
+    
+    "onload": function(report) {
+        // Called when report loads
+        console.log("Report loaded");
+    },
+    
+    "before_refresh": function(report) {
+        // Called before report refreshes
+        console.log("Refreshing report");
+    },
+    
+    "after_datatable_render": function(datatable) {
+        // Called after data table is rendered
+        console.log("Data table rendered");
+    },
+    
+    "formatter": function(value, row, column, data, default_formatter) {
+        // Custom cell formatting
+        if (column.fieldname == "status" && value == "Completed") {
+            value = `<span style="color: green;">${value}</span>`;
+        }
+        return default_formatter(value, row, column, data);
+    },
+    
+    "get_datatable_options": function(options) {
+        // Customize data table options
+        return Object.assign(options, {
+            checkboxColumn: true,
+            events: {
+                onCheckRow: function(row) {
+                    console.log("Row checked:", row);
+                }
+            }
+        });
+    }
+};
+```
+
+## Running reports programmatically
+
+Execute reports from code:
+
+```python
+from frappe.desk.query_report import run
+
+# Run report
+result = run(
+    report_name="Sales by Customer",
+    filters={
+        "from_date": "2024-01-01",
+        "to_date": "2024-12-31",
+        "customer": "CUST-001"
+    }
+)
+
+# Access results
+columns = result["columns"]
+data = result["result"]
+chart = result.get("chart")
+summary = result.get("report_summary")
+```

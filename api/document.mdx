@@ -1,0 +1,498 @@
+---
+title: Document API
+description: Working with documents using get_doc, new_doc, and document methods
+---
+
+The Document API provides methods to create, read, update, and delete documents in Frappe.
+
+## Getting documents
+
+### get_doc
+
+Return a Document object.
+
+<ParamField path="doctype" type="str">
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str">
+  Document name (optional for Single DocTypes)
+</ParamField>
+
+<ParamField path="for_update" type="bool" default="False">
+  Select document with FOR UPDATE clause for locking
+</ParamField>
+
+<ParamField path="check_permission" type="str | bool">
+  Permission type to check (e.g., "read", "write"). True checks "read" permission
+</ParamField>
+
+<ResponseField name="return" type="Document">
+  Document object with all fields and child tables loaded
+</ResponseField>
+
+```python
+# Get existing document
+user = frappe.get_doc("User", "test@example.com")
+print(user.full_name)
+
+# Get Single DocType
+settings = frappe.get_doc("System Settings")
+
+# Create from dict
+user = frappe.get_doc({
+    "doctype": "User",
+    "email": "test@example.com",
+    "first_name": "Test"
+})
+
+# Get with permission check
+doc = frappe.get_doc("Customer", "CUST-001", check_permission="write")
+
+# Select for update (row locking)
+doc = frappe.get_doc("Customer", "CUST-001", for_update=True)
+```
+
+### get_lazy_doc
+
+Return a Document object without loading child tables. Child tables are loaded on access.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name
+</ParamField>
+
+<ParamField path="for_update" type="bool" default="False">
+  Select with FOR UPDATE clause
+</ParamField>
+
+<ParamField path="check_permission" type="str | bool">
+  Permission type to check
+</ParamField>
+
+```python
+# Lazy load document - faster when you don't need child tables
+doc = frappe.get_lazy_doc("Sales Order", "SO-001")
+print(doc.customer)  # Parent fields are loaded
+print(doc.items)  # Child table loaded on access
+```
+
+### get_cached_doc
+
+Get a document from cache or database.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name
+</ParamField>
+
+```python
+# Get from cache if available
+doc = frappe.get_cached_doc("Customer", "CUST-001")
+```
+
+### get_last_doc
+
+Get the last created document of a DocType.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="filters" type="dict">
+  Additional filters
+</ParamField>
+
+```python
+# Get most recently created customer
+last_customer = frappe.get_last_doc("Customer")
+
+# With filters
+last_active = frappe.get_last_doc("Customer", {"disabled": 0})
+```
+
+## Creating documents
+
+### new_doc
+
+Create a new document instance.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="as_dict" type="bool" default="False">
+  Return as dict instead of Document object
+</ParamField>
+
+<ResponseField name="return" type="Document">
+  New document instance with default values
+</ResponseField>
+
+```python
+# Create new document
+customer = frappe.new_doc("Customer")
+customer.customer_name = "John Doe"
+customer.insert()
+
+# Create as dict
+customer_dict = frappe.new_doc("Customer", as_dict=True)
+```
+
+### copy_doc
+
+Create a copy of a document.
+
+<ParamField path="doc" type="Document" required>
+  Document to copy
+</ParamField>
+
+<ParamField path="no_copy" type="list">
+  Fields to exclude from copy
+</ParamField>
+
+```python
+# Copy existing document
+original = frappe.get_doc("Sales Order", "SO-001")
+copy = frappe.copy_doc(original)
+copy.insert()
+```
+
+## Document methods
+
+### insert
+
+Insert the document into the database.
+
+<ParamField path="ignore_permissions" type="bool" default="False">
+  Bypass permission checks
+</ParamField>
+
+<ParamField path="ignore_mandatory" type="bool" default="False">
+  Skip mandatory field validation
+</ParamField>
+
+<ParamField path="ignore_if_duplicate" type="bool" default="False">
+  Don't raise error if duplicate
+</ParamField>
+
+```python
+doc = frappe.new_doc("Customer")
+doc.customer_name = "Jane Doe"
+doc.insert()
+print(f"Created: {doc.name}")
+```
+
+### save
+
+Update the document in the database.
+
+<ParamField path="ignore_permissions" type="bool" default="False">
+  Bypass permission checks
+</ParamField>
+
+<ParamField path="ignore_version" type="bool" default="False">
+  Don't create version on save
+</ParamField>
+
+```python
+doc = frappe.get_doc("Customer", "CUST-001")
+doc.territory = "India"
+doc.save()
+```
+
+### submit
+
+Submit a submittable document.
+
+```python
+doc = frappe.get_doc("Sales Order", "SO-001")
+doc.submit()
+print(doc.docstatus)  # 1 (submitted)
+```
+
+### cancel
+
+Cancel a submitted document.
+
+```python
+doc = frappe.get_doc("Sales Order", "SO-001")
+doc.cancel()
+print(doc.docstatus)  # 2 (cancelled)
+```
+
+### delete
+
+Delete the document.
+
+```python
+doc = frappe.get_doc("Customer", "CUST-001")
+doc.delete()
+```
+
+### reload
+
+Reload the document from database.
+
+```python
+doc = frappe.get_doc("Customer", "CUST-001")
+# ... some changes ...
+doc.reload()  # Discard changes and reload from DB
+```
+
+## Field access
+
+### get
+
+Get a field value with a default.
+
+<ParamField path="fieldname" type="str" required>
+  Field name
+</ParamField>
+
+<ParamField path="default" type="any">
+  Default value if field is not set
+</ParamField>
+
+```python
+territory = doc.get("territory", "All Territories")
+```
+
+### set
+
+Set a field value.
+
+<ParamField path="fieldname" type="str" required>
+  Field name
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to set
+</ParamField>
+
+```python
+doc.set("territory", "India")
+```
+
+### db_set
+
+Set a field value directly in the database without loading the document.
+
+<ParamField path="fieldname" type="str | dict" required>
+  Field name or dict of field-value pairs
+</ParamField>
+
+<ParamField path="value" type="any">
+  Value to set
+</ParamField>
+
+<ParamField path="update_modified" type="bool" default="True">
+  Update modified timestamp
+</ParamField>
+
+<ParamField path="notify_update" type="bool" default="False">
+  Trigger update event
+</ParamField>
+
+```python
+# Set single field
+doc.db_set("status", "Active")
+
+# Set multiple fields
+doc.db_set({
+    "status": "Active",
+    "verified": 1
+})
+```
+
+### db_get
+
+Get the latest field value from database.
+
+<ParamField path="fieldname" type="str" required>
+  Field name
+</ParamField>
+
+```python
+latest_status = doc.db_get("status")
+```
+
+## Child table operations
+
+### append
+
+Append a row to a child table.
+
+<ParamField path="fieldname" type="str" required>
+  Child table fieldname
+</ParamField>
+
+<ParamField path="values" type="dict">
+  Field values for the new row
+</ParamField>
+
+<ResponseField name="return" type="Document">
+  The appended child document
+</ResponseField>
+
+```python
+# Add item to Sales Order
+so = frappe.get_doc("Sales Order", "SO-001")
+item_row = so.append("items", {
+    "item_code": "ITEM-001",
+    "qty": 10,
+    "rate": 100
+})
+so.save()
+```
+
+### remove
+
+Remove a child table row.
+
+<ParamField path="child_doc" type="Document" required>
+  Child document to remove
+</ParamField>
+
+```python
+for item in so.items:
+    if item.qty == 0:
+        so.remove(item)
+so.save()
+```
+
+## Permission checks
+
+### has_permission
+
+Check if user has a specific permission on the document.
+
+<ParamField path="ptype" type="str" default="read">
+  Permission type: "read", "write", "submit", "cancel", "delete"
+</ParamField>
+
+<ParamField path="user" type="str">
+  User to check permission for. Default: current user
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if user has permission
+</ResponseField>
+
+```python
+if doc.has_permission("write"):
+    doc.status = "Approved"
+    doc.save()
+```
+
+### check_permission
+
+Check permission and raise exception if not permitted.
+
+<ParamField path="ptype" type="str" default="read">
+  Permission type to check
+</ParamField>
+
+```python
+doc.check_permission("submit")
+doc.submit()
+```
+
+## Document state
+
+### as_dict
+
+Convert document to dictionary.
+
+<ParamField path="no_default_fields" type="bool" default="False">
+  Exclude default fields like owner, creation
+</ParamField>
+
+<ParamField path="no_child_table_fields" type="bool" default="False">
+  Exclude child table fields
+</ParamField>
+
+```python
+data = doc.as_dict()
+print(data["customer_name"])
+```
+
+### as_json
+
+Convert document to JSON string.
+
+```python
+json_str = doc.as_json()
+```
+
+## Helper functions
+
+### delete_doc
+
+Delete a document by doctype and name.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name
+</ParamField>
+
+<ParamField path="force" type="bool" default="False">
+  Delete even if document is linked
+</ParamField>
+
+<ParamField path="ignore_permissions" type="bool" default="False">
+  Bypass permission checks
+</ParamField>
+
+<ParamField path="delete_permanently" type="bool" default="False">
+  Delete permanently without creating Deleted Document
+</ParamField>
+
+```python
+# Delete with permission check
+frappe.delete_doc("Customer", "CUST-001")
+
+# Force delete linked document
+frappe.delete_doc("Item", "ITEM-001", force=True)
+```
+
+### rename_doc
+
+Rename a document.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="old" type="str" required>
+  Current name
+</ParamField>
+
+<ParamField path="new" type="str" required>
+  New name
+</ParamField>
+
+<ParamField path="merge" type="bool" default="False">
+  Merge with existing document if new name exists
+</ParamField>
+
+<ParamField path="force" type="bool" default="False">
+  Force rename even if links exist
+</ParamField>
+
+```python
+# Rename document
+frappe.rename_doc("Customer", "CUST-001", "CUST-NEW-001")
+
+# Merge with existing
+frappe.rename_doc("Customer", "CUST-001", "CUST-002", merge=True)
+```

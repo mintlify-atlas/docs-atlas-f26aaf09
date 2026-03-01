@@ -1,0 +1,373 @@
+---
+title: Session management API
+description: Access user session data and manage authentication state
+---
+
+The Session API provides access to the current user's session data, authentication state, and request context.
+
+## Session object
+
+The `frappe.session` object contains information about the current user's session.
+
+### session.user
+
+Get the current logged-in user's email/username.
+
+```python
+current_user = frappe.session.user
+print(f"Current user: {current_user}")
+
+if frappe.session.user == "Guest":
+    print("User is not logged in")
+```
+
+### session.data
+
+Session data dictionary for storing arbitrary session values.
+
+```python
+# Store data in session
+frappe.session.data["selected_company"] = "Company A"
+
+# Retrieve data
+company = frappe.session.data.get("selected_company")
+```
+
+### session.sid
+
+Session ID (unique identifier for the session).
+
+```python
+session_id = frappe.session.sid
+```
+
+## User information
+
+### set_user
+
+Set the current user (typically used in background jobs or tests).
+
+<ParamField path="username" type="str" required>
+  User email/username to set as current user
+</ParamField>
+
+```python
+# Switch to specific user context
+frappe.set_user("administrator@example.com")
+
+# Perform operations as this user
+customer = frappe.new_doc("Customer")
+customer.insert()
+
+# Reset to Administrator
+frappe.set_user("Administrator")
+```
+
+<Warning>
+  Use `set_user` carefully as it changes the permission context. Always reset to the original user after operations.
+</Warning>
+
+### get_user
+
+Get the UserPermissions object for current or specified user.
+
+<ResponseField name="return" type="UserPermissions">
+  Object containing user permissions and roles
+</ResponseField>
+
+```python
+user_perms = frappe.get_user()
+print(user_perms.roles)  # List of user's roles
+print(user_perms.can_read)  # Doctypes user can read
+```
+
+## User context
+
+### frappe.user
+
+Alias for `frappe.session.user` - current user's email.
+
+```python
+if frappe.user == "Administrator":
+    print("Admin user")
+
+# Use in queries
+customers = frappe.get_all(
+    "Customer",
+    filters={"owner": frappe.user}
+)
+```
+
+## Request context
+
+### frappe.request
+
+Werkzeug Request object for the current HTTP request.
+
+```python
+# Get request headers
+user_agent = frappe.request.headers.get("User-Agent")
+
+# Get request method
+if frappe.request.method == "POST":
+    print("POST request")
+
+# Get request URL
+url = frappe.request.url
+```
+
+### frappe.form_dict
+
+Dictionary of request parameters (GET/POST data).
+
+```python
+# Access form data
+customer_name = frappe.form_dict.get("customer_name")
+territory = frappe.form_dict.get("territory")
+
+# In whitelisted methods
+@frappe.whitelist()
+def update_customer():
+    name = frappe.form_dict.get("name")
+    territory = frappe.form_dict.get("territory")
+    
+    doc = frappe.get_doc("Customer", name)
+    doc.territory = territory
+    doc.save()
+```
+
+### get_request_header
+
+Get a specific request header value.
+
+<ParamField path="key" type="str" required>
+  Header name
+</ParamField>
+
+<ParamField path="default" type="any">
+  Default value if header not found
+</ParamField>
+
+```python
+auth_token = frappe.get_request_header("Authorization")
+content_type = frappe.get_request_header("Content-Type", "application/json")
+```
+
+## Session utilities
+
+### frappe.local
+
+Thread-local object containing request-specific data.
+
+```python
+# Site information
+site_name = frappe.local.site
+site_path = frappe.local.site_path
+
+# Response object
+frappe.local.response["message"] = "Success"
+
+# Error logs
+errors = frappe.local.error_log
+messages = frappe.local.message_log
+```
+
+### frappe.flags
+
+Flags dictionary for controlling framework behavior in current request.
+
+```python
+# Skip permission checks
+frappe.flags.ignore_permissions = True
+
+# Mute email sending
+frappe.flags.mute_emails = True
+
+# Custom flags for your app
+frappe.flags.in_import = True
+
+# Check flags
+if frappe.flags.in_test:
+    print("Running in test mode")
+```
+
+## Cache
+
+### frappe.cache
+
+Redis cache for storing temporary data across requests.
+
+```python
+# Set cache value
+frappe.cache.set_value("exchange_rate_USD", 75.5)
+
+# Get cache value
+rate = frappe.cache.get_value("exchange_rate_USD")
+
+# Set with expiry (in seconds)
+frappe.cache.set_value(
+    "verification_code",
+    "123456",
+    expires_in_sec=300  # 5 minutes
+)
+
+# Delete cache value
+frappe.cache.delete_value("exchange_rate_USD")
+
+# Hash operations for structured data
+frappe.cache.hset("user_settings", frappe.session.user, {"theme": "dark"})
+settings = frappe.cache.hget("user_settings", frappe.session.user)
+```
+
+### Local cache
+
+Request-specific cache that's cleared after each request.
+
+```python
+from frappe.utils.caching import local_cache
+
+@local_cache
+def get_settings():
+    # This function result is cached for the current request only
+    return frappe.get_single("System Settings")
+
+# First call - executes function
+settings = get_settings()
+
+# Second call in same request - returns cached result
+settings = get_settings()
+```
+
+## Response handling
+
+### frappe.response
+
+Response dictionary sent to client.
+
+```python
+# Set response data
+frappe.response["message"] = "Operation successful"
+frappe.response["data"] = {"customer_name": "John Doe"}
+
+# Set HTTP status code
+frappe.response["http_status_code"] = 201
+```
+
+### respond_as_web_page
+
+Send response as HTML page instead of JSON.
+
+<ParamField path="title" type="str" required>
+  Page title
+</ParamField>
+
+<ParamField path="html" type="str" required>
+  HTML content
+</ParamField>
+
+<ParamField path="http_status_code" type="int">
+  HTTP status code
+</ParamField>
+
+<ParamField path="indicator_color" type="str">
+  Color: "green", "red", "blue", "orange"
+</ParamField>
+
+```python
+frappe.respond_as_web_page(
+    "Success",
+    "Your order has been confirmed",
+    indicator_color="green"
+)
+
+frappe.respond_as_web_page(
+    "Error",
+    "Invalid request",
+    http_status_code=400,
+    indicator_color="red"
+)
+```
+
+## Authentication checks
+
+### Check if user is logged in
+
+```python
+if frappe.session.user != "Guest":
+    print("User is authenticated")
+else:
+    print("User is not logged in")
+```
+
+### Check user type
+
+```python
+from frappe.permissions import is_system_user
+
+if is_system_user():
+    print("User has desk access")
+else:
+    print("Website user only")
+```
+
+## Session in whitelisted methods
+
+```python
+@frappe.whitelist()
+def get_user_profile():
+    """Get current user's profile data."""
+    user = frappe.session.user
+    
+    if user == "Guest":
+        frappe.throw("Please login to continue")
+    
+    return frappe.get_doc("User", user).as_dict()
+
+@frappe.whitelist(allow_guest=True)
+def public_endpoint():
+    """Endpoint accessible without login."""
+    if frappe.session.user == "Guest":
+        return {"message": "Hello, Guest!"}
+    else:
+        return {"message": f"Hello, {frappe.session.user}!"}
+```
+
+## Best practices
+
+```python
+# Store user preferences in session
+def set_user_preference(key, value):
+    """Store user preference in session."""
+    if "preferences" not in frappe.session.data:
+        frappe.session.data["preferences"] = {}
+    
+    frappe.session.data["preferences"][key] = value
+
+def get_user_preference(key, default=None):
+    """Get user preference from session."""
+    preferences = frappe.session.data.get("preferences", {})
+    return preferences.get(key, default)
+
+# Use cache for expensive operations
+def get_exchange_rates():
+    """Get exchange rates with caching."""
+    rates = frappe.cache.get_value("exchange_rates")
+    
+    if not rates:
+        # Expensive API call or calculation
+        rates = fetch_exchange_rates_from_api()
+        # Cache for 1 hour
+        frappe.cache.set_value("exchange_rates", rates, expires_in_sec=3600)
+    
+    return rates
+
+# Preserve user context in background jobs
+def enqueue_task():
+    """Enqueue background job with current user context."""
+    frappe.enqueue(
+        "my_app.tasks.process_order",
+        queue="long",
+        user=frappe.session.user,  # Pass user to job
+        order_id="SO-001"
+    )
+```

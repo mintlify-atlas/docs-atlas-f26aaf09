@@ -1,0 +1,406 @@
+---
+title: Permission API
+description: Check and manage user permissions with frappe.has_permission and related functions
+---
+
+The Permission API provides functions to check user permissions, manage roles, and control access to documents.
+
+## Checking permissions
+
+### has_permission
+
+Return True if user has permission for given doctype or document.
+
+<ParamField path="doctype" type="str" required>
+  DocType name to check permission for
+</ParamField>
+
+<ParamField path="ptype" type="str" default="read">
+  Permission type: "read", "write", "create", "submit", "cancel", "delete", "amend"
+</ParamField>
+
+<ParamField path="doc" type="Document | str">
+  Document object or name to check user permissions for
+</ParamField>
+
+<ParamField path="user" type="str">
+  User to check permission for. Default: current user
+</ParamField>
+
+<ParamField path="throw" type="bool" default="False">
+  Raise PermissionError if not permitted
+</ParamField>
+
+<ParamField path="parent_doctype" type="str">
+  Required when checking permission for child DocType
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Print detailed permission check logs
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if user has permission
+</ResponseField>
+
+```python
+# Check if user can read Customer doctype
+if frappe.has_permission("Customer"):
+    customers = frappe.get_all("Customer")
+
+# Check write permission
+if frappe.has_permission("Customer", "write"):
+    print("User can modify customers")
+
+# Check permission for specific document
+if frappe.has_permission("Customer", "write", "CUST-001"):
+    doc = frappe.get_doc("Customer", "CUST-001")
+    doc.territory = "India"
+    doc.save()
+
+# Raise exception if no permission
+frappe.has_permission("Customer", "delete", throw=True)
+
+# Check for another user
+if frappe.has_permission("Customer", "read", user="user@example.com"):
+    print("User has read access")
+
+# Check child table permission
+frappe.has_permission(
+    "Sales Order Item",
+    "write",
+    parent_doctype="Sales Order"
+)
+```
+
+### only_for
+
+Raises PermissionError if the user does not have any of the permitted roles.
+
+<ParamField path="roles" type="str | list | tuple" required>
+  Role or list of roles
+</ParamField>
+
+<ParamField path="message" type="bool | str" default="False">
+  Custom error message or True for default message
+</ParamField>
+
+```python
+# Restrict to single role
+frappe.only_for("System Manager")
+
+# Allow multiple roles
+frappe.only_for(["System Manager", "Accounts Manager"])
+
+# With custom message
+frappe.only_for(
+    "System Manager",
+    message="Only System Managers can perform this action"
+)
+```
+
+<Note>
+  Administrator user always passes this check regardless of roles.
+</Note>
+
+## Role management
+
+### get_roles
+
+Return roles of current or specified user.
+
+<ParamField path="user" type="str">
+  User to get roles for. Default: current user
+</ParamField>
+
+<ResponseField name="return" type="list">
+  List of role names
+</ResponseField>
+
+```python
+# Get current user's roles
+roles = frappe.get_roles()
+if "System Manager" in roles:
+    print("User is a System Manager")
+
+# Get roles for specific user
+user_roles = frappe.get_roles("user@example.com")
+```
+
+### add_user_permission
+
+Add a user permission rule.
+
+<ParamField path="doctype" type="str" required>
+  DocType to restrict
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name user has access to
+</ParamField>
+
+<ParamField path="user" type="str" required>
+  User to apply permission to
+</ParamField>
+
+<ParamField path="applicable_for" type="str">
+  DocType this permission applies to
+</ParamField>
+
+<ParamField path="is_default" type="bool" default="False">
+  Set as default value in forms
+</ParamField>
+
+<ParamField path="hide_descendants" type="bool" default="False">
+  Hide nested records (for tree doctypes)
+</ParamField>
+
+```python
+# Allow user to access only one territory
+frappe.permissions.add_user_permission(
+    "Territory",
+    "India",
+    "user@example.com"
+)
+
+# With applicable_for - restrict when creating Sales Orders
+frappe.permissions.add_user_permission(
+    "Customer",
+    "CUST-001",
+    "user@example.com",
+    applicable_for="Sales Order"
+)
+
+# Set as default
+frappe.permissions.add_user_permission(
+    "Warehouse",
+    "Mumbai",
+    "user@example.com",
+    is_default=True
+)
+```
+
+### remove_user_permission
+
+Remove a user permission.
+
+<ParamField path="doctype" type="str" required>
+  DocType
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Document name
+</ParamField>
+
+<ParamField path="user" type="str" required>
+  User
+</ParamField>
+
+```python
+frappe.permissions.remove_user_permission(
+    "Territory",
+    "India",
+    "user@example.com"
+)
+```
+
+### clear_user_permissions_for_doctype
+
+Clear all user permissions for a doctype.
+
+<ParamField path="doctype" type="str" required>
+  DocType
+</ParamField>
+
+<ParamField path="user" type="str">
+  User to clear permissions for. If not specified, clears for all users
+</ParamField>
+
+```python
+# Clear for specific user
+frappe.permissions.clear_user_permissions_for_doctype(
+    "Territory",
+    "user@example.com"
+)
+
+# Clear for all users
+frappe.permissions.clear_user_permissions_for_doctype("Territory")
+```
+
+## Permission utilities
+
+### can_import
+
+Check if user can import data for a doctype.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="raise_exception" type="bool" default="False">
+  Raise PermissionError if not allowed
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if user can import
+</ResponseField>
+
+```python
+if frappe.permissions.can_import("Customer"):
+    # Process import
+    pass
+```
+
+### can_export
+
+Check if user can export data for a doctype.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="raise_exception" type="bool" default="False">
+  Raise PermissionError if not allowed
+</ParamField>
+
+<ParamField path="is_owner" type="bool" default="False">
+  Check if user is owner of records
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if user can export
+</ResponseField>
+
+```python
+if frappe.permissions.can_export("Customer"):
+    # Export data
+    pass
+```
+
+### get_user_permissions
+
+Get all user permissions for a user.
+
+<ParamField path="user" type="str">
+  User to get permissions for. Default: current user
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  Dictionary of user permissions organized by doctype
+</ResponseField>
+
+```python
+user_perms = frappe.permissions.get_user_permissions("user@example.com")
+print(user_perms)
+# {
+#     "Territory": [
+#         {"doc": "India", "applicable_for": None},
+#         {"doc": "Mumbai", "applicable_for": "Warehouse"}
+#     ],
+#     "Customer": [
+#         {"doc": "CUST-001", "applicable_for": "Sales Order"}
+#     ]
+# }
+```
+
+## Advanced permission checks
+
+### has_website_permission
+
+Check if user has website permission for a document.
+
+<ParamField path="doc" type="Document | str" required>
+  Document or document name
+</ParamField>
+
+<ParamField path="ptype" type="str" default="read">
+  Permission type
+</ParamField>
+
+<ParamField path="user" type="str">
+  User to check. Default: current user
+</ParamField>
+
+<ParamField path="doctype" type="str">
+  DocType name (required if doc is string)
+</ParamField>
+
+```python
+# Check website permission
+if frappe.has_website_permission("Blog Post", "read", "BP-001"):
+    post = frappe.get_doc("Blog Post", "BP-001")
+```
+
+### get_role_permissions
+
+Get permission settings for a doctype based on user's roles.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ParamField path="user" type="str">
+  User to check. Default: current user
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  Dictionary of permission flags
+</ResponseField>
+
+```python
+perms = frappe.permissions.get_role_permissions("Customer")
+print(perms)
+# {
+#     "read": 1,
+#     "write": 1,
+#     "create": 1,
+#     "delete": 0,
+#     "submit": 0,
+#     ...
+# }
+```
+
+## Permission constants
+
+```python
+# Available permission types
+frappe.permissions.std_rights
+# ('select', 'read', 'write', 'create', 'delete',
+#  'submit', 'cancel', 'amend', 'print', 'email',
+#  'report', 'import', 'export', 'share')
+
+# Standard roles
+frappe.permissions.GUEST_ROLE  # "Guest"
+frappe.permissions.ALL_USER_ROLE  # "All"
+frappe.permissions.SYSTEM_USER_ROLE  # "Desk User"
+frappe.permissions.ADMIN_ROLE  # "Administrator"
+```
+
+## Best practices
+
+```python
+# Always check permissions before operations
+def update_customer_territory(customer, territory):
+    # Check permission first
+    if not frappe.has_permission("Customer", "write", customer):
+        frappe.throw("Not allowed to update this customer")
+    
+    doc = frappe.get_doc("Customer", customer)
+    doc.territory = territory
+    doc.save()
+
+# Use only_for for role-based access
+@frappe.whitelist()
+def sensitive_operation():
+    frappe.only_for(["System Manager", "Administrator"])
+    # Perform operation
+    pass
+
+# Check permissions with debug for troubleshooting
+frappe.has_permission(
+    "Customer",
+    "write",
+    "CUST-001",
+    debug=True  # Shows why permission was granted/denied
+)
+```

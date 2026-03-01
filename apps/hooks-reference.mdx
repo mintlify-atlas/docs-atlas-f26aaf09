@@ -1,0 +1,587 @@
+---
+title: Hooks reference
+description: Complete reference of all available Frappe hooks
+---
+
+Hooks are defined in your app's `hooks.py` file and allow you to extend or modify framework behavior.
+
+## Application metadata
+
+Basic app information:
+
+```python
+app_name = "my_app"              # App name (required)
+app_title = "My App"             # Display name (required)
+app_publisher = "Company Name"   # Publisher (required)
+app_description = "Description"  # Brief description (required)
+app_email = "dev@example.com"    # Contact email (required)
+app_license = "MIT"              # License (required)
+app_version = "0.0.1"           # Version number
+app_logo_url = "/assets/my_app/logo.png"  # Logo URL
+```
+
+## Installation hooks
+
+Run code during app installation/uninstallation:
+
+```python
+before_install = "my_app.setup.before_install"
+after_install = "my_app.setup.after_install"
+
+before_uninstall = "my_app.setup.before_uninstall"
+after_uninstall = "my_app.setup.after_uninstall"
+
+# Called when another app is installed
+before_app_install = "my_app.setup.before_app_install"
+after_app_install = "my_app.setup.after_app_install"
+
+# Called when another app is uninstalled  
+before_app_uninstall = "my_app.setup.before_app_uninstall"
+after_app_uninstall = "my_app.setup.after_app_uninstall"
+```
+
+## Asset hooks
+
+Include JavaScript and CSS files:
+
+### Desk (backend)
+
+```python
+# Include in desk.html
+app_include_js = [
+    "my_app.bundle.js",
+    "/assets/my_app/js/custom.js"
+]
+
+app_include_css = [
+    "my_app.bundle.css",
+    "/assets/my_app/css/custom.css"
+]
+
+app_include_icons = [
+    "/assets/my_app/icons/icons.svg"
+]
+```
+
+### Website (frontend)
+
+```python
+# Include in web templates
+web_include_js = [
+    "/assets/my_app/js/website.js"
+]
+
+web_include_css = [
+    "/assets/my_app/css/website.css"
+]
+
+web_include_icons = [
+    "/assets/my_app/icons/web-icons.svg"
+]
+
+# Custom SCSS for website themes
+website_theme_scss = "my_app/public/scss/website"
+```
+
+### DocType-specific assets
+
+```python
+# Form scripts
+doctype_js = {
+    "Sales Order": "public/js/sales_order.js",
+    "Customer": "public/js/customer.js"
+}
+
+# List view scripts
+doctype_list_js = {
+    "Sales Order": "public/js/sales_order_list.js"
+}
+
+# Calendar view
+doctype_calendar_js = {
+    "Event": "public/js/event_calendar.js"
+}
+
+# Tree view
+doctype_tree_js = {
+    "Account": "public/js/account_tree.js"
+}
+
+# Web forms
+webform_include_js = {
+    "job-application": "public/js/job_application.js"
+}
+
+webform_include_css = {
+    "job-application": "public/css/job_application.css"
+}
+
+# Page scripts
+page_js = {
+    "setup-wizard": "public/js/setup_wizard.js"
+}
+```
+
+## Document events
+
+Hook into document lifecycle events:
+
+```python
+doc_events = {
+    # Events for all DocTypes
+    "*": {
+        "before_insert": "my_app.api.before_insert",
+        "after_insert": "my_app.api.after_insert",
+        "before_save": "my_app.api.before_save",
+        "validate": "my_app.api.validate",
+        "on_update": "my_app.api.on_update",
+        "on_submit": "my_app.api.on_submit",
+        "on_cancel": "my_app.api.on_cancel",
+        "on_trash": "my_app.api.on_trash",
+        "after_delete": "my_app.api.after_delete",
+        "on_update_after_submit": "my_app.api.on_update_after_submit",
+        "on_change": "my_app.api.on_change",
+        "after_rename": "my_app.api.after_rename"
+    },
+    
+    # Events for specific DocType
+    "Customer": {
+        "validate": "my_app.customer.validate_customer",
+        "after_insert": "my_app.customer.create_portal_user",
+        "on_trash": "my_app.customer.check_linked_records"
+    },
+    
+    "Sales Order": {
+        "on_submit": [
+            "my_app.sales.update_inventory",
+            "my_app.sales.send_notification"
+        ]
+    }
+}
+```
+
+### Event execution order
+
+1. `before_insert` (only on first save)
+2. `before_save`
+3. `validate`
+4. `on_update` (after save)
+5. `after_insert` (only on first save)
+6. `on_submit` (when submitting)
+7. `on_cancel` (when cancelling)
+8. `on_update_after_submit` (when updating submitted doc)
+9. `on_trash` (before deletion)
+10. `after_delete` (after deletion)
+
+## Scheduled tasks
+
+Schedule background jobs:
+
+```python
+scheduler_events = {
+    # Run on every scheduler tick (every few seconds)
+    "all": [
+        "my_app.tasks.check_queue"
+    ],
+    
+    # Run every hour
+    "hourly": [
+        "my_app.tasks.sync_data"
+    ],
+    
+    # Run hourly during maintenance (not on the hour)
+    "hourly_maintenance": [
+        "my_app.tasks.cleanup_temp_files"
+    ],
+    
+    # Run once a day
+    "daily": [
+        "my_app.tasks.send_daily_report"
+    ],
+    
+    # Run daily during maintenance
+    "daily_maintenance": [
+        "my_app.tasks.archive_old_records"
+    ],
+    
+    # Run daily for long-running tasks
+    "daily_long": [
+        "my_app.tasks.generate_reports"
+    ],
+    
+    # Run once a week
+    "weekly": [
+        "my_app.tasks.weekly_summary"
+    ],
+    
+    # Run weekly for long-running tasks
+    "weekly_long": [
+        "my_app.tasks.weekly_backup"
+    ],
+    
+    # Run once a month
+    "monthly": [
+        "my_app.tasks.monthly_reports"
+    ],
+    
+    # Cron expressions
+    "cron": {
+        "0 9 * * *": [  # 9 AM every day
+            "my_app.tasks.morning_sync"
+        ],
+        "*/15 * * * *": [  # Every 15 minutes
+            "my_app.tasks.check_status"
+        ],
+        "0 0 1 * *": [  # First day of month
+            "my_app.tasks.monthly_cleanup"
+        ]
+    }
+}
+```
+
+## Permission hooks
+
+Customize permission checks:
+
+```python
+# Add conditions to list queries
+permission_query_conditions = {
+    "Customer": "my_app.permissions.get_customer_conditions",
+    "Sales Order": "my_app.permissions.get_order_conditions"
+}
+
+# Check permission at document level
+has_permission = {
+    "Customer": "my_app.permissions.customer_permission",
+    "Sales Order": "my_app.permissions.order_permission"
+}
+
+# Check permission for website pages
+has_website_permission = {
+    "Blog Post": "my_app.permissions.blog_permission"
+}
+```
+
+Example implementation:
+
+```python
+# my_app/permissions.py
+import frappe
+
+def get_customer_conditions(user):
+    if "Sales Manager" in frappe.get_roles(user):
+        return None  # No restrictions
+    
+    return f"`tabCustomer`.owner = {frappe.db.escape(user)}"
+
+def customer_permission(doc, ptype, user):
+    if "Sales Manager" in frappe.get_roles(user):
+        return True
+    
+    return doc.owner == user
+```
+
+## Request hooks
+
+Intercept HTTP requests:
+
+```python
+# Run before processing request
+before_request = [
+    "my_app.api.log_request",
+    "my_app.api.check_maintenance"
+]
+
+# Run after processing request
+after_request = [
+    "my_app.api.add_headers"
+]
+```
+
+## Job hooks
+
+Intercept background jobs:
+
+```python
+# Run before background job
+before_job = [
+    "my_app.jobs.setup_job"
+]
+
+# Run after background job
+after_job = [
+    "my_app.jobs.cleanup_job"
+]
+```
+
+## Website hooks
+
+### Routing
+
+```python
+# Route rules
+website_route_rules = [
+    {"from_route": "/shop/<category>", "to_route": "Product"},
+    {"from_route": "/account", "to_route": "me"}
+]
+
+# Redirects
+website_redirects = [
+    {"source": "/old-page", "target": "/new-page"},
+    {"source": r"/blog/(.*)", "target": r"/articles/\\1"}
+]
+
+# Custom 404 handler
+website_catch_all = "my_app.www.catch_all.index"
+```
+
+### Generators
+
+```python
+# Auto-create pages for DocTypes
+website_generators = [
+    "Blog Post",
+    "Product",
+    "Event"
+]
+```
+
+### Home page
+
+```python
+# Override home page
+home_page = "landing"
+
+# Role-based home pages
+role_home_page = {
+    "Customer": "shop",
+    "Sales User": "sales-dashboard"
+}
+
+# Base template
+base_template = "my_app/templates/base.html"
+```
+
+## Override methods
+
+Replace framework methods:
+
+```python
+override_whitelisted_methods = {
+    "frappe.client.get": "my_app.api.custom_get",
+    "frappe.client.set_value": "my_app.api.custom_set_value"
+}
+
+# Override doctype dashboards
+override_doctype_dashboards = {
+    "Customer": "my_app.customer.get_dashboard_data"
+}
+```
+
+## Jinja customization
+
+Add methods and filters to Jinja:
+
+```python
+jinja = {
+    "methods": "my_app.utils.jinja_methods",
+    "filters": [
+        "my_app.utils.format_currency",
+        "my_app.utils.markdown"
+    ]
+}
+```
+
+```python
+# my_app/utils.py
+def format_currency(value):
+    return f"${value:,.2f}"
+
+def jinja_methods():
+    return {
+        "get_setting": get_setting,
+        "is_premium_user": is_premium_user
+    }
+```
+
+## Other hooks
+
+### Notifications
+
+```python
+notification_config = "my_app.notifications.get_notification_config"
+```
+
+### Calendars
+
+```python
+calendars = ["Event", "Task", "Meeting"]
+```
+
+### Email
+
+```python
+# Email CSS
+email_css = ["email.bundle.css"]
+
+# Email append to
+email_append_to = ["Event", "ToDo"]
+```
+
+### PDF
+
+```python
+pdf_header_html = "my_app.utils.pdf_header"
+pdf_body_html = "my_app.utils.pdf_body" 
+pdf_footer_html = "my_app.utils.pdf_footer"
+pdf_generator = "my_app.utils.get_pdf"
+```
+
+### Standard queries
+
+```python
+standard_queries = {
+    "Customer": "my_app.queries.customer_query"
+}
+```
+
+### Migration
+
+```python
+before_migrate = ["my_app.patches.before_migrate"]
+after_migrate = ["my_app.patches.after_migrate"]
+```
+
+### Testing
+
+```python
+before_tests = "my_app.setup.before_tests"
+```
+
+### Session
+
+```python
+on_session_creation = [
+    "my_app.auth.log_login"
+]
+
+on_login = "my_app.auth.on_login"
+on_logout = "my_app.auth.on_logout"
+```
+
+### Bootinfo
+
+```python
+# Add data to boot info
+extend_bootinfo = [
+    "my_app.boot.add_custom_data"
+]
+```
+
+### User data
+
+```python
+# GDPR compliance
+user_data_fields = [
+    {
+        "doctype": "Customer",
+        "filter_by": "email",
+        "redact_fields": ["phone", "address"],
+        "rename": True
+    }
+]
+```
+
+### Link deletion
+
+```python
+# Ignore these links when deleting documents
+ignore_links_on_delete = ["Comment", "Activity Log"]
+```
+
+### Auto-cancel exemption
+
+```python
+# Exempt from auto-cancellation
+auto_cancel_exempted_doctypes = ["Payment Entry"]
+```
+
+### Log clearing
+
+```python
+# Days to retain logs
+default_log_clearing_doctypes = {
+    "Error Log": 14,
+    "Email Queue": 30
+}
+```
+
+### Global search
+
+```python
+global_search_doctypes = {
+    "Default": [
+        {"doctype": "Customer"},
+        {"doctype": "Item"},
+        {"doctype": "Sales Order"}
+    ]
+}
+```
+
+## Type annotations
+
+```python
+# Export type annotations for IDE support
+export_python_type_annotations = True
+
+# Require type annotations on whitelisted methods
+require_type_annotated_api_methods = True
+```
+
+## Apps screen
+
+```python
+add_to_apps_screen = [
+    {
+        "name": "my_app",
+        "logo": "/assets/my_app/logo.png",
+        "title": "My App",
+        "route": "/my-app",
+        "has_permission": "my_app.api.has_permission"
+    }
+]
+```
+
+## Dependencies
+
+```python
+# Required apps
+required_apps = ["frappe", "erpnext"]
+
+# Importable doctypes from other apps
+importable_doctypes = ["Custom DocType"]
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive method names">
+    Name hook methods clearly to indicate their purpose (e.g., `validate_customer_credit_limit`).
+  </Accordion>
+
+  <Accordion title="Handle errors gracefully">
+    Add try-except blocks in hooks to prevent breaking the application.
+  </Accordion>
+
+  <Accordion title="Document your hooks">
+    Add comments explaining why hooks are needed and what they do.
+  </Accordion>
+
+  <Accordion title="Test thoroughly">
+    Test hooks in development before deploying to production.
+  </Accordion>
+
+  <Accordion title="Use specific events">
+    Use specific DocType events instead of wildcard (`*`) when possible for better performance.
+  </Accordion>
+</AccordionGroup>

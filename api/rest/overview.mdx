@@ -1,0 +1,188 @@
+---
+title: REST API overview
+---
+
+Frappe Framework provides a comprehensive REST API that allows you to interact with your application programmatically. The API supports multiple versions and offers both auto-generated resource endpoints and custom method endpoints.
+
+## API versions
+
+Frappe supports multiple API versions:
+
+- **V1**: `/api/v1/*` (also available at `/api/*` for backward compatibility)
+- **V2**: `/api/v2/*` (recommended)
+
+The V2 API offers enhanced features including bulk operations, better error handling, and improved response formats.
+
+## Endpoint types
+
+The REST API provides two main types of endpoints:
+
+### Resource endpoints
+
+Auto-generated CRUD endpoints for all DocTypes in your application:
+
+```bash
+# V1
+GET    /api/resource/{doctype}
+POST   /api/resource/{doctype}
+GET    /api/resource/{doctype}/{name}
+PUT    /api/resource/{doctype}/{name}
+DELETE /api/resource/{doctype}/{name}
+
+# V2
+GET    /api/v2/document/{doctype}
+POST   /api/v2/document/{doctype}
+GET    /api/v2/document/{doctype}/{name}
+PUT    /api/v2/document/{doctype}/{name}
+DELETE /api/v2/document/{doctype}/{name}
+```
+
+### Method endpoints
+
+Call whitelisted Python methods via the API:
+
+```bash
+# V1
+GET/POST /api/method/{methodname}
+
+# V2
+GET/POST /api/v2/method/{methodname}
+GET/POST /api/v2/method/{doctype}/{method}
+```
+
+## Base URL
+
+All API requests are made to your Frappe site's domain:
+
+```
+https://your-site.com/api/...
+```
+
+## Request format
+
+### Query parameters
+
+For GET requests, pass parameters as query strings:
+
+```bash
+curl -X GET \
+  'https://your-site.com/api/v2/document/User?fields=["name","email"]&limit=10'
+```
+
+### Request body
+
+For POST, PUT, and PATCH requests, send data as JSON:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"first_name":"John","email":"john@example.com"}' \
+  https://your-site.com/api/v2/document/User
+```
+
+## Response format
+
+### V1 response structure
+
+```json
+{
+  "data": {
+    // Response data
+  },
+  "docs": [],
+  "exc": null,
+  "_server_messages": null
+}
+```
+
+### V2 response structure
+
+```json
+{
+  "data": {
+    // Response data
+  },
+  "docs": [],
+  "has_next_page": false
+}
+```
+
+## Error handling
+
+Errors are returned with appropriate HTTP status codes and error messages:
+
+```json
+{
+  "exc_type": "PermissionError",
+  "exception": "frappe.exceptions.PermissionError: Not permitted",
+  "_server_messages": "[\"Not permitted\"]"
+}
+```
+
+Common HTTP status codes:
+
+- `200` - Success
+- `201` - Created
+- `202` - Accepted (for async operations)
+- `400` - Bad request
+- `401` - Unauthorized
+- `403` - Forbidden
+- `404` - Not found
+- `417` - Expectation failed (validation errors)
+- `500` - Internal server error
+
+## Pagination
+
+List endpoints support pagination:
+
+```bash
+# V1
+curl 'https://your-site.com/api/resource/Task?limit_start=0&limit_page_length=20'
+
+# V2
+curl 'https://your-site.com/api/v2/document/Task?start=0&limit=20'
+```
+
+V2 includes a `has_next_page` field in the response to indicate if more results are available.
+
+## Filtering
+
+Filter results using the `filters` parameter:
+
+```bash
+# V1 - Complex filters
+curl 'https://your-site.com/api/resource/Task?filters=[["Task","status","=","Open"]]'
+
+# V2 - Simple filters
+curl 'https://your-site.com/api/v2/document/Task?filters={"status":"Open"}'
+```
+
+## Field selection
+
+Specify which fields to return:
+
+```bash
+curl 'https://your-site.com/api/v2/document/User?fields=["name","email","first_name"]'
+```
+
+## API request logging
+
+Enable API request logging in System Settings to track all API calls. This creates records in the "API Request Log" DocType.
+
+## Rate limiting
+
+API endpoints may be rate-limited based on your server configuration. Whitelisted methods can define their own rate limits using the `@rate_limit` decorator.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" href="/api/rest/authentication" icon="key">
+    Learn how to authenticate API requests
+  </Card>
+  <Card title="Resource endpoints" href="/api/rest/resources" icon="database">
+    Work with DocType CRUD operations
+  </Card>
+  <Card title="Method endpoints" href="/api/rest/methods" icon="code">
+    Call custom Python methods
+  </Card>
+</CardGroup>

@@ -1,0 +1,409 @@
+---
+title: List API
+description: Customize list views with filters, formatters, and actions
+---
+
+The List API allows you to customize list views for your DocTypes, including custom formatting, indicators, buttons, and bulk actions.
+
+## List settings
+
+Define list view settings in a JavaScript file named `{doctype}_list.js` in your app's public folder.
+
+```javascript
+// sales_order_list.js
+frappe.listview_settings['Sales Order'] = {
+    add_fields: ['customer', 'grand_total', 'status'],
+    
+    onload: function(listview) {
+        // Called when list view is loaded
+    },
+    
+    get_indicator: function(doc) {
+        // Return color indicator
+        if (doc.status === 'Draft') {
+            return [__('Draft'), 'red', 'status,=,Draft'];
+        } else if (doc.status === 'Completed') {
+            return [__('Completed'), 'green', 'status,=,Completed'];
+        }
+    },
+    
+    formatters: {
+        grand_total: function(value) {
+            return format_currency(value, doc.currency);
+        }
+    },
+    
+    button: {
+        show: function(doc) {
+            return doc.status === 'Open';
+        },
+        get_label: function() {
+            return __('Process');
+        },
+        get_description: function(doc) {
+            return __('Process {0}', [doc.name]);
+        },
+        action: function(doc) {
+            frappe.call({
+                method: 'my_app.api.process_order',
+                args: { name: doc.name },
+                callback: function() {
+                    frappe.show_alert('Processed');
+                }
+            });
+        }
+    }
+};
+```
+
+## Configuration options
+
+### add_fields
+
+Additional fields to fetch for the list view.
+
+```javascript
+frappe.listview_settings['Item'] = {
+    add_fields: ['item_group', 'stock_uom', 'valuation_rate']
+};
+```
+
+### hide_name_column
+
+Hide the name column in the list view.
+
+```javascript
+frappe.listview_settings['Item'] = {
+    hide_name_column: true
+};
+```
+
+### onload
+
+Function called when the list view is loaded.
+
+```javascript
+frappe.listview_settings['Sales Order'] = {
+    onload: function(listview) {
+        console.log('List view loaded');
+        
+        // Add custom button
+        listview.page.add_inner_button(__('Custom Action'), function() {
+            frappe.msgprint('Custom action triggered');
+        });
+    }
+};
+```
+
+<ParamField path="listview" type="object">
+  The list view object with access to page, filters, and other properties
+</ParamField>
+
+### refresh
+
+Function called when the list view is refreshed.
+
+```javascript
+frappe.listview_settings['Item'] = {
+    refresh: function(listview) {
+        // Called on refresh
+    }
+};
+```
+
+## Indicators
+
+### get_indicator()
+
+Define color indicators for list items.
+
+```javascript
+frappe.listview_settings['Task'] = {
+    get_indicator: function(doc) {
+        const status_colors = {
+            'Open': 'orange',
+            'Working': 'blue',
+            'Pending Review': 'yellow',
+            'Completed': 'green',
+            'Cancelled': 'red'
+        };
+        
+        return [__(doc.status), status_colors[doc.status], 'status,=,' + doc.status];
+    }
+};
+```
+
+<ParamField path="doc" type="object">
+  Document object with field values
+</ParamField>
+
+Returns an array with:
+1. Label to display
+2. Color: 'red', 'green', 'blue', 'orange', 'yellow', 'gray', 'pink', 'purple'
+3. Filter string (optional) - filter to apply when indicator is clicked
+
+## Formatters
+
+Customize how field values are displayed.
+
+```javascript
+frappe.listview_settings['Sales Order'] = {
+    formatters: {
+        customer: function(value, df, doc) {
+            return `<strong>${value}</strong>`;
+        },
+        
+        grand_total: function(value, df, doc) {
+            return format_currency(value, doc.currency);
+        },
+        
+        delivery_date: function(value) {
+            if (value < frappe.datetime.get_today()) {
+                return `<span class="text-danger">${value}</span>`;
+            }
+            return value;
+        }
+    }
+};
+```
+
+<ParamField path="value" type="any">
+  Field value to format
+</ParamField>
+
+<ParamField path="df" type="object">
+  Field definition object
+</ParamField>
+
+<ParamField path="doc" type="object">
+  Document object
+</ParamField>
+
+## Custom buttons
+
+Add action buttons to list items.
+
+```javascript
+frappe.listview_settings['Sales Order'] = {
+    button: {
+        show: function(doc) {
+            return doc.status === 'Draft';
+        },
+        
+        get_label: function() {
+            return __('Submit');
+        },
+        
+        get_description: function(doc) {
+            return __('Submit {0}', [doc.name]);
+        },
+        
+        action: function(doc) {
+            frappe.call({
+                method: 'frappe.client.submit',
+                args: { doc: doc },
+                callback: function() {
+                    frappe.show_alert(__('Submitted'));
+                    cur_list.refresh();
+                }
+            });
+        }
+    }
+};
+```
+
+<ParamField path="show" type="function">
+  Function that returns true if button should be shown for the document
+</ParamField>
+
+<ParamField path="get_label" type="function">
+  Function that returns the button label
+</ParamField>
+
+<ParamField path="get_description" type="function">
+  Function that returns button tooltip/description
+</ParamField>
+
+<ParamField path="action" type="function">
+  Function to execute when button is clicked
+</ParamField>
+
+## Bulk actions
+
+Add custom bulk actions for selected items.
+
+```javascript
+frappe.listview_settings['Item'] = {
+    onload: function(listview) {
+        listview.page.add_actions_menu_item(__('Bulk Update Price'), function() {
+            const selected = listview.get_checked_items();
+            
+            if (selected.length === 0) {
+                frappe.msgprint(__('Please select items'));
+                return;
+            }
+            
+            frappe.prompt({
+                label: __('New Rate'),
+                fieldname: 'rate',
+                fieldtype: 'Currency',
+                reqd: 1
+            }, function(values) {
+                frappe.call({
+                    method: 'my_app.api.bulk_update_rate',
+                    args: {
+                        items: selected,
+                        rate: values.rate
+                    },
+                    callback: function() {
+                        frappe.show_alert(__('Updated'));
+                        listview.refresh();
+                    }
+                });
+            }, __('Update Rate'));
+        });
+    }
+};
+```
+
+### listview.get_checked_items()
+
+Get list of selected item names.
+
+```javascript
+const selected = listview.get_checked_items();
+// Returns: ['ITEM-001', 'ITEM-002', ...]
+```
+
+## Custom filters
+
+Add custom filters to the list view.
+
+```javascript
+frappe.listview_settings['Item'] = {
+    onload: function(listview) {
+        // Add custom filter button
+        listview.page.add_inner_button(__('High Value Items'), function() {
+            listview.filter_area.add([[listview.doctype, 'valuation_rate', '>', 1000]]);
+        });
+    }
+};
+```
+
+## Accessing the current list
+
+You can access the current list view using `cur_list`.
+
+```javascript
+// Refresh the current list
+cur_list.refresh();
+
+// Get current filters
+const filters = cur_list.filter_area.get();
+
+// Clear all filters
+cur_list.filter_area.clear();
+```
+
+## List view object methods
+
+### refresh()
+
+Refresh the list view.
+
+```javascript
+listview.refresh();
+```
+
+### clear_checked_items()
+
+Clear all selected items.
+
+```javascript
+listview.clear_checked_items();
+```
+
+### toggle_result_area()
+
+Show or hide the results area.
+
+```javascript
+listview.toggle_result_area();
+```
+
+## Example: Complete customization
+
+```javascript
+frappe.listview_settings['Sales Order'] = {
+    add_fields: ['customer', 'grand_total', 'status', 'delivery_date'],
+    
+    hide_name_column: false,
+    
+    onload: function(listview) {
+        // Add custom filter
+        listview.page.add_inner_button(__('Pending Delivery'), function() {
+            listview.filter_area.clear();
+            listview.filter_area.add([
+                [listview.doctype, 'status', '=', 'To Deliver'],
+                [listview.doctype, 'delivery_date', '<=', frappe.datetime.add_days(null, 7)]
+            ]);
+        });
+        
+        // Add bulk action
+        listview.page.add_actions_menu_item(__('Send Reminder'), function() {
+            const selected = listview.get_checked_items();
+            frappe.call({
+                method: 'my_app.api.send_reminder',
+                args: { orders: selected },
+                callback: function() {
+                    frappe.msgprint(__('Reminders sent'));
+                }
+            });
+        });
+    },
+    
+    get_indicator: function(doc) {
+        if (doc.status === 'Draft') {
+            return [__('Draft'), 'gray', 'status,=,Draft'];
+        } else if (doc.status === 'To Deliver') {
+            return [__('To Deliver'), 'orange', 'status,=,To Deliver'];
+        } else if (doc.status === 'Completed') {
+            return [__('Completed'), 'green', 'status,=,Completed'];
+        }
+    },
+    
+    formatters: {
+        customer: function(value) {
+            return `<strong>${value}</strong>`;
+        },
+        grand_total: function(value, df, doc) {
+            return format_currency(value, doc.currency);
+        },
+        delivery_date: function(value) {
+            if (value < frappe.datetime.get_today()) {
+                return `<span class="text-danger">${frappe.datetime.str_to_user(value)}</span>`;
+            }
+            return frappe.datetime.str_to_user(value);
+        }
+    },
+    
+    button: {
+        show: function(doc) {
+            return doc.status === 'To Deliver';
+        },
+        get_label: function() {
+            return __('Mark as Delivered');
+        },
+        action: function(doc) {
+            frappe.call({
+                method: 'my_app.api.mark_delivered',
+                args: { name: doc.name },
+                callback: function() {
+                    frappe.show_alert(__('Marked as delivered'));
+                    cur_list.refresh();
+                }
+            });
+        }
+    }
+};
+```

@@ -1,0 +1,470 @@
+---
+title: UI components
+description: JavaScript components for dialogs, prompts, and user interfaces
+---
+
+Frappe provides various UI components for creating interactive user interfaces, dialogs, and custom forms.
+
+## Dialogs
+
+### frappe.ui.Dialog
+
+Create custom dialogs with form fields.
+
+```javascript
+const dialog = new frappe.ui.Dialog({
+    title: __('Enter Details'),
+    fields: [
+        {
+            label: __('Customer'),
+            fieldname: 'customer',
+            fieldtype: 'Link',
+            options: 'Customer',
+            reqd: 1
+        },
+        {
+            label: __('Amount'),
+            fieldname: 'amount',
+            fieldtype: 'Currency',
+            reqd: 1
+        },
+        {
+            fieldtype: 'Column Break'
+        },
+        {
+            label: __('Date'),
+            fieldname: 'date',
+            fieldtype: 'Date',
+            default: frappe.datetime.get_today()
+        },
+        {
+            label: __('Description'),
+            fieldname: 'description',
+            fieldtype: 'Text'
+        }
+    ],
+    primary_action_label: __('Submit'),
+    primary_action(values) {
+        console.log(values);
+        dialog.hide();
+    }
+});
+
+dialog.show();
+```
+
+<ParamField path="title" type="string" required>
+  Dialog title
+</ParamField>
+
+<ParamField path="fields" type="array" required>
+  Array of field definitions
+</ParamField>
+
+<ParamField path="primary_action_label" type="string">
+  Label for primary button (default: 'Submit')
+</ParamField>
+
+<ParamField path="primary_action" type="function">
+  Function to execute when primary button is clicked. Receives field values as argument
+</ParamField>
+
+<ParamField path="secondary_action_label" type="string">
+  Label for secondary button
+</ParamField>
+
+<ParamField path="secondary_action" type="function">
+  Function to execute when secondary button is clicked
+</ParamField>
+
+<ParamField path="size" type="string">
+  Dialog size: 'small', 'large', 'extra-large'
+</ParamField>
+
+<ParamField path="minimizable" type="boolean">
+  Allow dialog to be minimized
+</ParamField>
+
+<ParamField path="static" type="boolean">
+  Prevent dialog from being closed by clicking outside or pressing Escape
+</ParamField>
+
+### Dialog methods
+
+```javascript
+// Show dialog
+dialog.show();
+
+// Hide dialog
+dialog.hide();
+
+// Get all field values
+const values = dialog.get_values();
+
+// Get specific field value
+const customer = dialog.get_value('customer');
+
+// Set field values
+dialog.set_values({
+    customer: 'CUST-001',
+    amount: 1000
+});
+
+// Set specific field value
+dialog.set_value('customer', 'CUST-001');
+
+// Set dialog title
+dialog.set_title(__('New Title'));
+
+// Set primary action
+dialog.set_primary_action(__('Save'), function() {
+    console.log(dialog.get_values());
+});
+
+// Disable primary button
+dialog.disable_primary_action();
+
+// Enable primary button
+dialog.enable_primary_action();
+
+// Clear all fields
+dialog.clear();
+
+// Get field object
+const field = dialog.get_field('customer');
+
+// Set field property
+dialog.set_df_property('amount', 'read_only', 1);
+```
+
+## Prompts
+
+### frappe.prompt()
+
+Quickly prompt user for input.
+
+```javascript
+// Simple text input
+frappe.prompt('Enter your name', function(values) {
+    console.log(values.value);
+});
+
+// Single field with options
+frappe.prompt({
+    label: __('Customer'),
+    fieldname: 'customer',
+    fieldtype: 'Link',
+    options: 'Customer',
+    reqd: 1
+}, function(values) {
+    console.log(values.customer);
+}, __('Select Customer'), __('Submit'));
+
+// Multiple fields
+frappe.prompt([
+    {
+        label: __('Item'),
+        fieldname: 'item',
+        fieldtype: 'Link',
+        options: 'Item'
+    },
+    {
+        label: __('Quantity'),
+        fieldname: 'qty',
+        fieldtype: 'Int',
+        default: 1
+    }
+], function(values) {
+    console.log(values.item, values.qty);
+});
+```
+
+<ParamField path="fields" type="string | object | array" required>
+  Field definition(s). Can be a string for simple text input, object for single field, or array for multiple fields
+</ParamField>
+
+<ParamField path="callback" type="function" required>
+  Function to execute when user submits. Receives field values as argument
+</ParamField>
+
+<ParamField path="title" type="string">
+  Dialog title
+</ParamField>
+
+<ParamField path="primary_label" type="string">
+  Label for submit button
+</ParamField>
+
+## MultiSelectDialog
+
+Select multiple records from a DocType.
+
+```javascript
+const dialog = new frappe.ui.form.MultiSelectDialog({
+    doctype: 'Item',
+    target: this,
+    setters: {
+        item_group: null,
+        item_name: null
+    },
+    get_query() {
+        return {
+            filters: {
+                is_sales_item: 1
+            }
+        };
+    },
+    action(selections) {
+        console.log(selections);
+        dialog.dialog.hide();
+    }
+});
+```
+
+<ParamField path="doctype" type="string" required>
+  DocType to select from
+</ParamField>
+
+<ParamField path="target" type="object" required>
+  Context object (usually `this` or form object)
+</ParamField>
+
+<ParamField path="setters" type="object">
+  Object with field names as keys for quick filters
+</ParamField>
+
+<ParamField path="get_query" type="function">
+  Function that returns query filters
+</ParamField>
+
+<ParamField path="action" type="function" required>
+  Function to execute when items are selected. Receives array of selected names
+</ParamField>
+
+<ParamField path="primary_action_label" type="string">
+  Label for primary button (default: 'Get Items')
+</ParamField>
+
+<ParamField path="size" type="string">
+  Dialog size: 'small', 'large', 'extra-large'
+</ParamField>
+
+## Alerts and notifications
+
+### frappe.show_alert()
+
+Show a temporary alert notification.
+
+```javascript
+// Simple message
+frappe.show_alert('Document saved successfully');
+
+// With indicator and duration
+frappe.show_alert({
+    message: __('Operation completed'),
+    indicator: 'green'
+}, 5);
+
+// Different indicators
+frappe.show_alert({ message: __('Error occurred'), indicator: 'red' });
+frappe.show_alert({ message: __('Warning'), indicator: 'orange' });
+frappe.show_alert({ message: __('Info'), indicator: 'blue' });
+```
+
+<ParamField path="message" type="string | object" required>
+  Message to display or object with message and indicator
+</ParamField>
+
+<ParamField path="seconds" type="number">
+  Duration to show alert in seconds (default: 3)
+</ParamField>
+
+### frappe.msgprint()
+
+Display a message dialog.
+
+```javascript
+// Simple message
+frappe.msgprint(__('Record updated successfully'));
+
+// With title and indicator
+frappe.msgprint({
+    title: __('Success'),
+    indicator: 'green',
+    message: __('The operation completed successfully')
+});
+
+// As list
+frappe.msgprint({
+    title: __('Errors'),
+    indicator: 'red',
+    message: ['Error 1', 'Error 2', 'Error 3'],
+    as_list: true
+});
+```
+
+### frappe.throw()
+
+Throw an error and display it.
+
+```javascript
+frappe.throw(__('Invalid value for {0}', [fieldname]));
+
+// With title
+frappe.throw({
+    title: __('Validation Error'),
+    message: __('The quantity cannot be negative')
+});
+```
+
+### frappe.confirm()
+
+Show a confirmation dialog.
+
+```javascript
+frappe.confirm(
+    __('Are you sure you want to delete this record?'),
+    function() {
+        // User clicked Yes
+        frappe.call({
+            method: 'frappe.client.delete',
+            args: { doctype: 'Item', name: 'ITEM-001' }
+        });
+    },
+    function() {
+        // User clicked No (optional)
+        console.log('Cancelled');
+    }
+);
+```
+
+### frappe.warn()
+
+Show a warning dialog with danger styling.
+
+```javascript
+frappe.warn(
+    __('Delete Records?'),
+    __('This action cannot be undone. Are you sure?'),
+    function() {
+        // Proceed with deletion
+    },
+    __('Delete'),
+    true  // minimizable
+);
+```
+
+## Loading indicators
+
+### frappe.dom.freeze()
+
+Show a loading overlay that blocks user interaction.
+
+```javascript
+// Simple freeze
+frappe.dom.freeze();
+
+// With custom message
+frappe.dom.freeze(__('Loading data...'));
+
+// Unfreeze
+frappe.dom.unfreeze();
+```
+
+### frappe.show_progress()
+
+Show a progress bar.
+
+```javascript
+frappe.show_progress(__('Processing'), 30, 100);
+
+// Update progress
+frappe.show_progress(__('Processing'), 60, 100);
+
+// Hide progress
+frappe.hide_progress();
+```
+
+<ParamField path="title" type="string" required>
+  Progress bar title
+</ParamField>
+
+<ParamField path="count" type="number" required>
+  Current progress count
+</ParamField>
+
+<ParamField path="total" type="number" required>
+  Total count
+</ParamField>
+
+## File upload
+
+### frappe.ui.FileUploader
+
+Show file upload dialog.
+
+```javascript
+new frappe.ui.FileUploader({
+    folder: 'Home/Attachments',
+    on_success(file_doc) {
+        console.log('File uploaded:', file_doc);
+    },
+    restrictions: {
+        max_file_size: 5242880,  // 5MB
+        allowed_file_types: ['.pdf', '.png', '.jpg']
+    }
+});
+```
+
+## Field group
+
+### frappe.ui.FieldGroup
+
+Create a group of fields without a full dialog.
+
+```javascript
+const fields = new frappe.ui.FieldGroup({
+    parent: $('.my-container'),
+    fields: [
+        {
+            label: __('Name'),
+            fieldname: 'name',
+            fieldtype: 'Data'
+        },
+        {
+            label: __('Email'),
+            fieldname: 'email',
+            fieldtype: 'Data'
+        }
+    ]
+});
+
+fields.make();
+
+// Get values
+const values = fields.get_values();
+
+// Set values
+fields.set_values({
+    name: 'John Doe',
+    email: 'john@example.com'
+});
+```
+
+## Toast notifications
+
+Show temporary toast messages.
+
+```javascript
+// Success toast
+frappe.toast({
+    message: __('Saved'),
+    indicator: 'green'
+});
+
+// Error toast
+frappe.toast({
+    message: __('Failed to save'),
+    indicator: 'red'
+});
+```

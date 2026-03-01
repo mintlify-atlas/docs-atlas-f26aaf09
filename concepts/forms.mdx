@@ -1,0 +1,611 @@
+---
+title: Form rendering
+description: Form rendering, customization, and scripting in Frappe
+---
+
+Forms are the primary interface for creating and editing documents in Frappe. They are automatically generated from DocType metadata and can be customized through scripts, custom fields, and form layouts.
+
+## Form architecture
+
+Frappe forms are rendered dynamically based on DocType metadata:
+
+- **Server-side**: DocType fields, permissions, and validation rules
+- **Client-side**: JavaScript for UI interactions, field events, and custom behavior
+- **Layout**: Section breaks, column breaks, and tabs organize fields visually
+
+```javascript
+// Form script example (client-side)
+frappe.ui.form.on('Sales Order', {
+    refresh: function(frm) {
+        // Called when form is loaded or refreshed
+        console.log('Form loaded:', frm.doc.name);
+    },
+    
+    customer: function(frm) {
+        // Called when customer field changes
+        frm.set_value('customer_name', 'Updated Value');
+    }
+});
+```
+
+## Form structure
+
+### Layout fields
+
+Forms are organized using special layout fields:
+
+<Tabs>
+  <Tab title="Section Break">
+    Creates a new section with an optional heading:
+    
+    ```python
+    {
+        'fieldtype': 'Section Break',
+        'label': 'Contact Information',
+        'collapsible': 1  # Make section collapsible
+    }
+    ```
+  </Tab>
+  <Tab title="Column Break">
+    Splits fields into columns within a section:
+    
+    ```python
+    {
+        'fieldtype': 'Column Break',
+        'label': ''  # Optional label
+    }
+    ```
+  </Tab>
+  <Tab title="Tab Break">
+    Creates tabs to organize form sections:
+    
+    ```python
+    {
+        'fieldtype': 'Tab Break',
+        'label': 'Details'
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Field properties
+
+Fields have properties that control their behavior and appearance:
+
+```python
+{
+    'fieldname': 'customer',
+    'label': 'Customer',
+    'fieldtype': 'Link',
+    'options': 'Customer',
+    'reqd': 1,              # Required field
+    'read_only': 0,         # Editable
+    'hidden': 0,            # Visible
+    'in_list_view': 1,      # Show in list
+    'in_standard_filter': 1, # Show in standard filters
+    'bold': 1,              # Bold label
+    'depends_on': 'eval:doc.is_customer',  # Conditional display
+    'default': '',          # Default value
+    'description': 'Select the customer'  # Help text
+}
+```
+
+## Client-side scripting
+
+### Form events
+
+Form scripts respond to various events:
+
+```javascript
+frappe.ui.form.on('DocType Name', {
+    // Document level events
+    refresh: function(frm) {
+        // Form is loaded or refreshed
+    },
+    
+    before_load: function(frm) {
+        // Before document is loaded
+    },
+    
+    onload: function(frm) {
+        // After document is loaded
+    },
+    
+    before_save: function(frm) {
+        // Before document is saved (can prevent save)
+        if (!frm.doc.customer) {
+            frappe.throw('Customer is required');
+            return false;
+        }
+    },
+    
+    after_save: function(frm) {
+        // After document is saved
+        frappe.show_alert('Document saved successfully');
+    },
+    
+    validate: function(frm) {
+        // Validation before save
+    },
+    
+    before_submit: function(frm) {
+        // Before document is submitted
+    },
+    
+    on_submit: function(frm) {
+        // After document is submitted
+    }
+});
+```
+
+### Field events
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    // Field change event
+    customer: function(frm) {
+        // When customer field changes
+        if (frm.doc.customer) {
+            // Fetch customer details
+            frappe.call({
+                method: 'frappe.client.get',
+                args: {
+                    doctype: 'Customer',
+                    name: frm.doc.customer
+                },
+                callback: function(r) {
+                    frm.set_value('customer_name', r.message.customer_name);
+                }
+            });
+        }
+    },
+    
+    // Custom button
+    refresh: function(frm) {
+        if (!frm.is_new()) {
+            frm.add_custom_button('Create Invoice', function() {
+                // Button click handler
+                create_invoice(frm);
+            });
+        }
+    }
+});
+```
+
+### Child table events
+
+```javascript
+// Child table (items) events
+frappe.ui.form.on('Sales Order Item', {
+    // When new row is added
+    items_add: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        row.qty = 1;  // Set default quantity
+    },
+    
+    // When item_code field changes in child table
+    item_code: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        if (row.item_code) {
+            // Fetch item details
+            frappe.db.get_value('Item', row.item_code, 'standard_rate')
+                .then(r => {
+                    frappe.model.set_value(cdt, cdn, 'rate', r.message.standard_rate);
+                });
+        }
+    },
+    
+    // When qty changes
+    qty: function(frm, cdt, cdn) {
+        calculate_amount(frm, cdt, cdn);
+    },
+    
+    rate: function(frm, cdt, cdn) {
+        calculate_amount(frm, cdt, cdn);
+    }
+});
+
+function calculate_amount(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    row.amount = row.qty * row.rate;
+    frm.refresh_field('items');
+}
+```
+
+## Form API
+
+### Setting values
+
+```javascript
+// Set field value
+frm.set_value('customer', 'CUST-001');
+
+// Set multiple fields
+frm.set_value({
+    'customer': 'CUST-001',
+    'delivery_date': frappe.datetime.add_days(frappe.datetime.get_today(), 7)
+});
+
+// Set child table value
+let row = frm.add_child('items');
+frappe.model.set_value(row.doctype, row.name, 'item_code', 'ITEM-001');
+frappe.model.set_value(row.doctype, row.name, 'qty', 10);
+frm.refresh_field('items');
+```
+
+### Getting values
+
+```javascript
+// Get field value
+let customer = frm.doc.customer;
+
+// Get child table rows
+let items = frm.doc.items || [];
+items.forEach(function(item) {
+    console.log(item.item_code, item.qty);
+});
+```
+
+### Field manipulation
+
+```javascript
+// Show/hide fields
+frm.set_df_property('customer_name', 'hidden', 1);
+frm.set_df_property('customer_name', 'hidden', 0);
+
+// Make field read-only
+frm.set_df_property('customer', 'read_only', 1);
+
+// Make field mandatory
+frm.set_df_property('delivery_date', 'reqd', 1);
+
+// Set field label
+frm.set_df_property('customer', 'label', 'Client');
+
+// Set field description
+frm.set_df_property('customer', 'description', 'Select the client from the list');
+
+// Refresh single field
+frm.refresh_field('customer');
+
+// Refresh multiple fields
+frm.refresh_fields(['customer', 'customer_name', 'items']);
+```
+
+### Adding buttons
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    refresh: function(frm) {
+        // Primary button
+        frm.add_custom_button('Create Invoice', function() {
+            create_invoice(frm);
+        }, 'Create');
+        
+        // Button in dropdown group
+        frm.add_custom_button('Payment Entry', function() {
+            create_payment(frm);
+        }, 'Create');
+        
+        // Change button color
+        frm.page.set_inner_btn_group_as_primary('Create');
+        
+        // Remove button
+        frm.remove_custom_button('Create Invoice', 'Create');
+    }
+});
+```
+
+## Server-side API calls
+
+### Calling whitelisted methods
+
+```javascript
+// Call a whitelisted method
+frappe.call({
+    method: 'my_app.api.get_customer_balance',
+    args: {
+        customer: frm.doc.customer
+    },
+    callback: function(r) {
+        if (r.message) {
+            frm.set_value('outstanding_balance', r.message);
+        }
+    }
+});
+
+// Call with freeze (shows loading)
+frappe.call({
+    method: 'my_app.api.process_order',
+    args: {
+        order: frm.doc.name
+    },
+    freeze: true,
+    freeze_message: 'Processing order...',
+    callback: function(r) {
+        frappe.show_alert('Order processed successfully');
+        frm.reload_doc();
+    }
+});
+```
+
+### Document methods
+
+```javascript
+// Call method defined in document controller
+frm.call({
+    method: 'calculate_totals',
+    doc: frm.doc,
+    callback: function(r) {
+        frm.refresh_fields();
+    }
+});
+
+// Or using dot notation
+frappe.call({
+    method: 'my_app.my_module.doctype.sales_order.sales_order.calculate_totals',
+    args: {
+        doc: frm.doc
+    }
+});
+```
+
+## Form customization
+
+### Using Customize Form
+
+Customize forms without coding:
+
+1. Go to form → Menu → Customize
+2. Modify field properties
+3. Add custom fields
+4. Reorder fields
+5. Add custom JavaScript
+6. Save customization
+
+<Note>
+Customizations are stored in the database and override standard DocType definitions.
+</Note>
+
+### Custom scripts
+
+```javascript
+// Add custom script via Customize Form
+frappe.ui.form.on('Sales Order', {
+    refresh: function(frm) {
+        // Add custom styling
+        if (frm.doc.status === 'Overdue') {
+            frm.dashboard.set_headline_alert(
+                'This order is overdue',
+                'red'
+            );
+        }
+        
+        // Add indicators
+        if (frm.doc.total > 10000) {
+            frm.page.set_indicator('High Value', 'orange');
+        }
+    }
+});
+```
+
+## Conditional field display
+
+### Depends On
+
+```python
+# Show field only when condition is true
+{
+    'fieldname': 'tax_id',
+    'label': 'Tax ID',
+    'fieldtype': 'Data',
+    'depends_on': 'eval:doc.is_company==1'  # Show only for companies
+}
+
+# Multiple conditions
+{
+    'depends_on': 'eval:doc.customer && doc.status=="Draft"'
+}
+```
+
+### Mandatory Depends On
+
+```python
+# Make field mandatory based on condition
+{
+    'fieldname': 'gstin',
+    'label': 'GSTIN',
+    'fieldtype': 'Data',
+    'mandatory_depends_on': 'eval:doc.country=="India"'
+}
+```
+
+### Read Only Depends On
+
+```python
+# Make field read-only based on condition
+{
+    'fieldname': 'customer',
+    'label': 'Customer',
+    'fieldtype': 'Link',
+    'options': 'Customer',
+    'read_only_depends_on': 'eval:doc.docstatus==1'
+}
+```
+
+## Form layout examples
+
+### Two-column layout
+
+```python
+[
+    {
+        'fieldtype': 'Section Break',
+        'label': 'Basic Information'
+    },
+    {'fieldname': 'first_name', 'fieldtype': 'Data'},
+    {'fieldtype': 'Column Break'},  # Split into columns
+    {'fieldname': 'last_name', 'fieldtype': 'Data'},
+    
+    {'fieldtype': 'Section Break', 'label': 'Contact'},
+    {'fieldname': 'email', 'fieldtype': 'Data'},
+    {'fieldtype': 'Column Break'},
+    {'fieldname': 'phone', 'fieldtype': 'Data'}
+]
+```
+
+### Tabbed layout
+
+```python
+[
+    {'fieldtype': 'Tab Break', 'label': 'Details'},
+    {'fieldname': 'description', 'fieldtype': 'Text Editor'},
+    
+    {'fieldtype': 'Tab Break', 'label': 'Items'},
+    {'fieldname': 'items', 'fieldtype': 'Table', 'options': 'Item'},
+    
+    {'fieldtype': 'Tab Break', 'label': 'Attachments'},
+    {'fieldname': 'attachments', 'fieldtype': 'Attach'}
+]
+```
+
+## Advanced features
+
+### Dashboard
+
+Add custom dashboard information:
+
+```javascript
+frappe.ui.form.on('Sales Order', {
+    refresh: function(frm) {
+        // Add chart
+        frm.dashboard.add_chart({
+            title: 'Monthly Sales',
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar'],
+                datasets: [{
+                    name: 'Sales',
+                    values: [100, 150, 200]
+                }]
+            }
+        });
+        
+        // Add progress
+        frm.dashboard.add_progress('Completion', 75);
+        
+        // Add comment
+        frm.dashboard.add_comment('Last updated on ' + frappe.datetime.get_today());
+    }
+});
+```
+
+### Timeline
+
+Forms automatically show a timeline of activities. Customize it:
+
+```javascript
+frm.timeline.add_item({
+    icon: 'mail',
+    content: 'Email sent to customer',
+    color: 'blue',
+    timestamp: frappe.datetime.now_datetime()
+});
+```
+
+### Grid (child table) customization
+
+```javascript
+// Customize grid buttons
+frm.fields_dict.items.grid.add_custom_button('Import Items', function() {
+    // Import items logic
+});
+
+// Customize grid rows
+frm.fields_dict.items.grid.get_field('item_code').get_query = function() {
+    return {
+        filters: {
+            'is_sales_item': 1
+        }
+    };
+};
+
+// Format grid cells
+frappe.ui.form.on('Sales Order Item', {
+    items_add: function(frm, cdt, cdn) {
+        // Format when row is added
+    }
+});
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Minimize API calls">
+    Batch API calls and use field events wisely to avoid performance issues:
+    
+    ```javascript
+    // Bad: Multiple calls
+    frm.set_value('field1', value1);
+    frm.set_value('field2', value2);
+    frm.set_value('field3', value3);
+    
+    // Good: Single call
+    frm.set_value({
+        'field1': value1,
+        'field2': value2,
+        'field3': value3
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Handle async operations">
+    Always use callbacks for async operations:
+    
+    ```javascript
+    frappe.call({
+        method: 'my_method',
+        args: {data: frm.doc.name},
+        callback: function(r) {
+            // Handle response
+            frm.set_value('result', r.message);
+        },
+        error: function(r) {
+            // Handle errors
+            frappe.msgprint('Error occurred');
+        }
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Refresh fields after changes">
+    Always refresh fields after programmatic changes:
+    
+    ```javascript
+    frm.set_value('status', 'Completed');
+    frm.refresh_field('status');
+    
+    // For child tables
+    let row = frm.add_child('items');
+    frappe.model.set_value(row.doctype, row.name, 'qty', 10);
+    frm.refresh_field('items');
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="DocType system" icon="table" href="./doctype">
+    Learn about DocType metadata
+  </Card>
+  <Card title="Document class" icon="file" href="./document">
+    Understand document lifecycle
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Control form access and field permissions
+  </Card>
+  <Card title="Hooks" icon="webhook" href="./hooks">
+    Extend form behavior with hooks
+  </Card>
+</CardGroup>

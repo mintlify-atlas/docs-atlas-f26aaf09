@@ -1,0 +1,302 @@
+---
+title: Installation
+description: Set up Frappe Framework on your machine
+---
+
+Frappe Framework can be installed using Docker for quick setup, or manually for development. Choose the method that best fits your needs.
+
+## Docker installation (recommended for evaluation)
+
+The fastest way to try Frappe Framework is using Docker. This method is perfect for evaluation and testing.
+
+<Steps>
+  <Step title="Install prerequisites">
+    Ensure you have Docker, Docker Compose, and Git installed on your system.
+    
+    ```bash
+    # Verify installations
+    docker --version
+    docker compose version
+    git --version
+    ```
+    
+    <Note>
+      Refer to [Docker Documentation](https://docs.docker.com) for installation instructions specific to your operating system.
+    </Note>
+  </Step>
+
+  <Step title="Clone and start Frappe Docker">
+    ```bash
+    git clone https://github.com/frappe/frappe_docker
+    cd frappe_docker
+    docker compose -f pwd.yml up -d
+    ```
+    
+    <Info>
+      The first run will take several minutes as Docker downloads and builds the necessary images.
+    </Info>
+  </Step>
+
+  <Step title="Access your site">
+    After a couple of minutes, your site will be accessible at `http://localhost:8080`
+    
+    **Default credentials:**
+    - Username: `Administrator`
+    - Password: `admin`
+    
+    <Warning>
+      Change the default password immediately after first login!
+    </Warning>
+  </Step>
+</Steps>
+
+### ARM architecture (Apple Silicon)
+
+If you're running on ARM-based systems (like M1/M2 Macs), see the [Frappe Docker ARM setup guide](https://github.com/frappe/frappe_docker#to-run-on-arm64-architecture-follow-this-instructions).
+
+## Manual installation (recommended for development)
+
+For development work, install Frappe Framework using bench, the CLI tool that manages Frappe applications.
+
+<Warning>
+  Manual installation requires familiarity with the command line and system administration. If you're new to Frappe, start with Docker first.
+</Warning>
+
+### Prerequisites
+
+Before installing Frappe, ensure your system has:
+
+<AccordionGroup>
+  <Accordion title="System dependencies">
+    - **Python 3.14+** - Frappe requires Python 3.14 or later
+    - **Node.js 20+** - For building frontend assets
+    - **MariaDB 10.6+** - Primary database (PostgreSQL also supported)
+    - **Redis** - For caching and background jobs
+    - **wkhtmltopdf** - For PDF generation
+    - **Git** - For version control
+  </Accordion>
+  
+  <Accordion title="Operating system support">
+    Frappe works best on:
+    - **Ubuntu 22.04 LTS** (recommended)
+    - **Debian 11+**
+    - **macOS** (for development)
+    - **WSL2 on Windows** (for development)
+    
+    <Note>
+      Production deployments should use Ubuntu or Debian Linux.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+### Install using bench
+
+<Steps>
+  <Step title="Install bench">
+    Bench is the CLI tool for managing Frappe applications. The easiest way to install it is using the automated script:
+    
+    ```bash
+    # Install bench and all dependencies
+    sudo pip3 install frappe-bench
+    ```
+    
+    For more control, visit the [bench installation guide](https://github.com/frappe/bench).
+    
+    <Info>
+      The installation script will create new passwords for the MariaDB root user, Frappe user, and Administrator account. These are displayed during installation and saved to `~/frappe_passwords.txt`.
+    </Info>
+  </Step>
+
+  <Step title="Initialize a bench">
+    Create a new bench (a directory that contains your Frappe installation):
+    
+    ```bash
+    bench init frappe-bench
+    cd frappe-bench
+    ```
+    
+    This command:
+    - Creates a new directory `frappe-bench`
+    - Clones the Frappe Framework repository
+    - Sets up a Python virtual environment
+    - Installs Python and Node.js dependencies
+    
+    <Note>
+      This process can take 5-10 minutes depending on your internet connection.
+    </Note>
+  </Step>
+
+  <Step title="Create a new site">
+    Sites in Frappe are multi-tenant installations. Each site has its own database and can have different apps installed:
+    
+    ```bash
+    bench new-site frappe.localhost
+    ```
+    
+    You'll be prompted to set an administrator password. This creates:
+    - A new database
+    - Site configuration files
+    - Administrator user account
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    bench start
+    ```
+    
+    This starts multiple processes:
+    - **Web server** (port 8000) - Serves your application
+    - **SocketIO** (port 9000) - Real-time communications
+    - **Redis** - Cache and job queue
+    - **Background workers** - Process jobs asynchronously
+    
+    <Tip>
+      Keep this terminal window open. The development server will automatically reload when you make changes to Python files.
+    </Tip>
+  </Step>
+
+  <Step title="Access your site">
+    Open your browser and navigate to:
+    
+    ```
+    http://frappe.localhost:8000/app
+    ```
+    
+    Login with:
+    - Username: `Administrator`
+    - Password: (the password you set in step 3)
+    
+    <Note>
+      If `frappe.localhost` doesn't work, you may need to add it to your `/etc/hosts` file:
+      ```
+      127.0.0.1 frappe.localhost
+      ```
+    </Note>
+  </Step>
+</Steps>
+
+## Database options
+
+While MariaDB is the default and recommended database, Frappe also supports PostgreSQL and SQLite.
+
+<CodeGroup>
+```bash MariaDB (default)
+bench new-site mysite.localhost
+```
+
+```bash PostgreSQL
+bench new-site mysite.localhost --db-type postgres
+```
+
+```bash SQLite
+bench new-site mysite.localhost --db-type sqlite
+```
+</CodeGroup>
+
+<Warning>
+  SQLite is only suitable for development and testing. Never use it in production.
+</Warning>
+
+## Verify installation
+
+Confirm your installation is working correctly:
+
+```bash
+# Check bench version
+bench --version
+
+# Check Frappe version
+bench version
+
+# List all sites
+bench --site all list-apps
+```
+
+## Common installation issues
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    If port 8000 is already in use, you can specify a different port:
+    
+    ```bash
+    bench start --port 8001
+    ```
+  </Accordion>
+  
+  <Accordion title="Database connection errors">
+    Verify MariaDB is running and accessible:
+    
+    ```bash
+    sudo systemctl status mariadb
+    ```
+    
+    Check database credentials in `sites/common_site_config.json`
+  </Accordion>
+  
+  <Accordion title="Node.js build errors">
+    Clear the build cache and rebuild:
+    
+    ```bash
+    bench clear-cache
+    bench build
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission errors">
+    Ensure your user has proper permissions:
+    
+    ```bash
+    sudo chown -R $USER:$USER ~/frappe-bench
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Development environment setup
+
+For the best development experience, install these additional tools:
+
+<CodeGroup>
+```bash Python tools
+# Install development dependencies
+pip install frappe-bench[dev]
+
+# Install pre-commit hooks
+cd ~/frappe-bench/apps/frappe
+pre-commit install
+```
+
+```bash Editor extensions
+# VS Code extensions
+code --install-extension frappe.frappe-syntax
+code --install-extension ms-python.python
+```
+</CodeGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Build your first Frappe app
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how Frappe works
+  </Card>
+  <Card title="Core concepts" icon="book" href="/concepts/doctype">
+    Learn about DocTypes and Documents
+  </Card>
+  <Card title="Bench commands" icon="terminal" href="/cli/bench-commands">
+    Master the bench CLI
+  </Card>
+</CardGroup>
+
+## Getting help
+
+If you run into issues:
+
+- Check the [installation troubleshooting guide](https://docs.frappe.io/framework/user/en/installation#troubleshooting)
+- Ask on the [discussion forum](https://discuss.frappe.io)
+- Review [GitHub issues](https://github.com/frappe/bench/issues)
+
+<Note>
+  **Production deployment:** This guide covers development setup. For production deployments, see the [production setup guide](/deployment/production).
+</Note>

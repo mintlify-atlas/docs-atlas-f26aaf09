@@ -1,0 +1,473 @@
+---
+title: Query builder API
+description: Build type-safe database queries using frappe.qb
+---
+
+The Query Builder (`frappe.qb`) provides a programmatic way to construct SQL queries with type safety and method chaining.
+
+## Getting started
+
+### DocType
+
+Create a query builder table reference.
+
+<ParamField path="doctype" type="str" required>
+  DocType name
+</ParamField>
+
+<ResponseField name="return" type="Table">
+  Query builder table object
+</ResponseField>
+
+```python
+from frappe.query_builder import DocType
+
+Customer = DocType("Customer")
+query = frappe.qb.from_(Customer).select(Customer.name, Customer.customer_name)
+```
+
+### get_query
+
+Execute a query builder query.
+
+<ParamField path="doctype" type="str" required>
+  DocType name (for permission checks)
+</ParamField>
+
+<ParamField path="filters" type="dict | list">
+  Filter conditions
+</ParamField>
+
+<ParamField path="fields" type="list">
+  Fields to select
+</ParamField>
+
+<ParamField path="or_filters" type="dict | list">
+  OR filter conditions
+</ParamField>
+
+```python
+from frappe.query_builder import get_query
+
+query = get_query(
+    "Customer",
+    filters={"disabled": 0},
+    fields=["name", "customer_name", "territory"]
+)
+results = query.run(as_dict=True)
+```
+
+## Select queries
+
+### Basic select
+
+```python
+from frappe.query_builder import DocType
+
+Customer = DocType("Customer")
+
+# Select specific fields
+query = frappe.qb.from_(Customer).select(
+    Customer.name,
+    Customer.customer_name,
+    Customer.territory
+)
+
+# Select all fields
+query = frappe.qb.from_(Customer).select("*")
+
+# Execute query
+results = query.run(as_dict=True)
+```
+
+### Where conditions
+
+```python
+Customer = DocType("Customer")
+
+# Simple condition
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.territory == "India")
+)
+
+# Multiple conditions (AND)
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.territory == "India")
+    .where(Customer.disabled == 0)
+)
+
+# OR conditions
+from frappe.query_builder import Criterion
+
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(
+        (Customer.territory == "India") |
+        (Customer.territory == "United States")
+    )
+)
+
+# IN operator
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.territory.isin(["India", "United States", "UK"]))
+)
+
+# LIKE operator
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.customer_name.like("%John%"))
+)
+
+# Comparison operators
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.creation > "2024-01-01")
+)
+```
+
+### Joins
+
+```python
+Customer = DocType("Customer")
+Address = DocType("Address")
+DynamicLink = DocType("Dynamic Link")
+
+# Inner join
+query = (
+    frappe.qb.from_(Customer)
+    .inner_join(DynamicLink)
+    .on(DynamicLink.link_name == Customer.name)
+    .inner_join(Address)
+    .on(Address.name == DynamicLink.parent)
+    .select(
+        Customer.name,
+        Customer.customer_name,
+        Address.city
+    )
+    .where(DynamicLink.link_doctype == "Customer")
+)
+
+# Left join
+query = (
+    frappe.qb.from_(Customer)
+    .left_join(Address)
+    .on(Address.customer == Customer.name)
+    .select(Customer.name, Address.city)
+)
+```
+
+### Order by
+
+```python
+# Order by single field
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name, Customer.creation)
+    .orderby(Customer.creation, order=frappe.qb.desc)
+)
+
+# Order by multiple fields
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .orderby(Customer.territory)
+    .orderby(Customer.creation, order=frappe.qb.desc)
+)
+```
+
+### Group by
+
+```python
+from frappe.query_builder.functions import Count
+
+Customer = DocType("Customer")
+
+query = (
+    frappe.qb.from_(Customer)
+    .select(
+        Customer.territory,
+        Count(Customer.name).as_("count")
+    )
+    .groupby(Customer.territory)
+)
+
+results = query.run(as_dict=True)
+```
+
+### Limit and offset
+
+```python
+# Limit results
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .limit(10)
+)
+
+# Pagination with offset
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .limit(10)
+    .offset(20)
+)
+```
+
+## Aggregate functions
+
+### Count
+
+```python
+from frappe.query_builder.functions import Count
+
+Customer = DocType("Customer")
+
+# Count all
+query = (
+    frappe.qb.from_(Customer)
+    .select(Count("*").as_("total"))
+)
+
+# Count distinct
+query = (
+    frappe.qb.from_(Customer)
+    .select(Count(Customer.territory).distinct().as_("territories"))
+)
+```
+
+### Sum, Avg, Min, Max
+
+```python
+from frappe.query_builder.functions import Sum, Avg, Min, Max
+
+SalesOrder = DocType("Sales Order")
+
+query = (
+    frappe.qb.from_(SalesOrder)
+    .select(
+        Sum(SalesOrder.grand_total).as_("total_sales"),
+        Avg(SalesOrder.grand_total).as_("avg_order"),
+        Min(SalesOrder.grand_total).as_("min_order"),
+        Max(SalesOrder.grand_total).as_("max_order")
+    )
+    .where(SalesOrder.docstatus == 1)
+)
+```
+
+### Other functions
+
+```python
+from frappe.query_builder.functions import (
+    Concat,
+    Coalesce,
+    IfNull,
+    Date,
+    Now,
+    CurDate
+)
+
+Customer = DocType("Customer")
+
+# String concatenation
+query = (
+    frappe.qb.from_(Customer)
+    .select(
+        Concat(Customer.first_name, " ", Customer.last_name).as_("full_name")
+    )
+)
+
+# Coalesce / IfNull
+query = (
+    frappe.qb.from_(Customer)
+    .select(
+        Coalesce(Customer.territory, "Not Set").as_("territory")
+    )
+)
+
+# Date functions
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Date(Customer.creation) == CurDate())
+)
+```
+
+## Update queries
+
+```python
+Customer = DocType("Customer")
+
+# Simple update
+query = (
+    frappe.qb.update(Customer)
+    .set(Customer.disabled, 1)
+    .where(Customer.territory == "Old Territory")
+)
+query.run()
+
+# Update multiple fields
+query = (
+    frappe.qb.update(Customer)
+    .set(Customer.disabled, 1)
+    .set(Customer.territory, "Archived")
+    .where(Customer.creation < "2020-01-01")
+)
+query.run()
+```
+
+## Delete queries
+
+```python
+Customer = DocType("Customer")
+
+# Delete with condition
+query = (
+    frappe.qb.delete()
+    .from_(Customer)
+    .where(Customer.disabled == 1)
+)
+query.run()
+```
+
+<Warning>
+  Direct DELETE queries bypass document controllers. Use `frappe.delete_doc()` to trigger document events.
+</Warning>
+
+## Insert queries
+
+```python
+Customer = DocType("Customer")
+
+# Insert single record
+query = (
+    frappe.qb.into(Customer)
+    .columns(Customer.customer_name, Customer.territory)
+    .insert("New Customer", "India")
+)
+query.run()
+
+# Insert multiple records
+query = (
+    frappe.qb.into(Customer)
+    .columns(Customer.customer_name, Customer.territory)
+    .insert("Customer 1", "India")
+    .insert("Customer 2", "United States")
+)
+query.run()
+```
+
+## Conditional expressions
+
+### Case statements
+
+```python
+from frappe.query_builder import Case
+
+Customer = DocType("Customer")
+
+query = (
+    frappe.qb.from_(Customer)
+    .select(
+        Customer.name,
+        Case()
+        .when(Customer.territory == "India", "Domestic")
+        .when(Customer.territory == "United States", "International")
+        .else_("Other")
+        .as_("customer_type")
+    )
+)
+```
+
+## Subqueries
+
+```python
+Customer = DocType("Customer")
+SalesOrder = DocType("Sales Order")
+
+# Subquery in WHERE clause
+subquery = (
+    frappe.qb.from_(SalesOrder)
+    .select(SalesOrder.customer)
+    .where(SalesOrder.docstatus == 1)
+)
+
+query = (
+    frappe.qb.from_(Customer)
+    .select(Customer.name)
+    .where(Customer.name.isin(subquery))
+)
+```
+
+## Running queries
+
+### run
+
+Execute the query and return results.
+
+<ParamField path="as_dict" type="bool" default="False">
+  Return results as dictionaries
+</ParamField>
+
+<ParamField path="as_list" type="bool" default="False">
+  Return results as lists
+</ParamField>
+
+<ParamField path="pluck" type="bool | str" default="False">
+  Return only specified column values
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Print the generated SQL query
+</ParamField>
+
+```python
+# As dict
+results = query.run(as_dict=True)
+
+# As list
+results = query.run(as_list=True)
+
+# Pluck single column
+names = query.run(pluck="name")
+
+# Debug mode
+query.run(debug=True)  # Prints SQL query
+```
+
+## Best practices
+
+```python
+# Use query builder for complex queries
+from frappe.query_builder import DocType
+from frappe.query_builder.functions import Count, Sum
+
+SalesOrder = DocType("Sales Order")
+SalesOrderItem = DocType("Sales Order Item")
+
+# Build readable, maintainable queries
+query = (
+    frappe.qb.from_(SalesOrder)
+    .inner_join(SalesOrderItem)
+    .on(SalesOrderItem.parent == SalesOrder.name)
+    .select(
+        SalesOrder.customer,
+        Count(SalesOrder.name).as_("order_count"),
+        Sum(SalesOrderItem.amount).as_("total_amount")
+    )
+    .where(SalesOrder.docstatus == 1)
+    .where(SalesOrder.transaction_date >= "2024-01-01")
+    .groupby(SalesOrder.customer)
+    .orderby(Sum(SalesOrderItem.amount), order=frappe.qb.desc)
+)
+
+results = query.run(as_dict=True)
+```

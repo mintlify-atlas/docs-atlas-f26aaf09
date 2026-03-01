@@ -1,0 +1,318 @@
+---
+title: DocType system
+description: Understanding Frappe's metadata-driven DocType system
+---
+
+DocTypes are the foundation of Frappe's metadata-driven architecture. A DocType defines the structure, behavior, and properties of a document type in your application.
+
+## What is a DocType?
+
+A DocType is a metadata definition that describes:
+
+- **Fields**: The structure of data (field types, labels, options)
+- **Permissions**: Who can read, write, create, or delete documents
+- **Behavior**: Naming rules, validation logic, and workflow states
+- **UI Configuration**: Form layout, list views, and search fields
+
+<Note>
+DocTypes are stored in the `tabDocType` table and are themselves documents that can be created and modified through Frappe's interface.
+</Note>
+
+## Core DocType properties
+
+### Basic metadata
+
+```python
+# Example: Getting DocType metadata
+meta = frappe.get_meta('User')
+
+print(meta.name)              # 'User'
+print(meta.module)            # 'Core'
+print(meta.is_submittable)    # False
+print(meta.issingle)          # False (Single DocTypes have only one record)
+print(meta.istable)           # False (Child tables)
+print(meta.is_virtual)        # False (Virtual DocTypes don't have database tables)
+```
+
+### Field definitions
+
+DocTypes contain field definitions (DocFields) that specify the data structure:
+
+```python
+# Get all fields
+fields = meta.fields
+
+# Get specific field
+email_field = meta.get_field('email')
+print(email_field.fieldtype)  # 'Data'
+print(email_field.label)      # 'Email'
+print(email_field.reqd)       # 1 (required)
+
+# Get fields by type
+link_fields = meta.get_link_fields()
+table_fields = meta.get_table_fields()
+```
+
+## Field types
+
+Frappe supports numerous field types for different data needs:
+
+<Tabs>
+  <Tab title="Basic types">
+    - **Data**: Short text (140 characters)
+    - **Text**: Long text
+    - **Int**: Integer numbers
+    - **Float**: Decimal numbers
+    - **Currency**: Monetary values
+    - **Date**: Date values
+    - **Datetime**: Date and time
+  </Tab>
+  <Tab title="Link types">
+    - **Link**: Reference to another DocType
+    - **Dynamic Link**: Link where target DocType is dynamic
+    - **Table**: Child table (one-to-many relationship)
+    - **Table MultiSelect**: Select multiple values from a table
+  </Tab>
+  <Tab title="Special types">
+    - **Select**: Dropdown with predefined options
+    - **Check**: Boolean checkbox
+    - **Attach**: File attachment
+    - **Attach Image**: Image attachment
+    - **Code**: Code editor field
+    - **HTML Editor**: Rich text editor
+    - **Markdown Editor**: Markdown text editor
+  </Tab>
+</Tabs>
+
+## Meta class API
+
+The `Meta` class provides methods to inspect and work with DocType metadata:
+
+```python
+from frappe.model.meta import get_meta
+
+meta = get_meta('Sales Order')
+
+# Check if field exists
+if meta.has_field('customer'):
+    print("Field exists")
+
+# Get field label
+label = meta.get_label('customer')  # "Customer"
+
+# Get title field
+title_field = meta.get_title_field()  # Field used as document title
+
+# Get valid columns (database columns)
+valid_columns = meta.get_valid_columns()
+
+# Get search fields
+search_fields = meta.get_search_fields()  # Fields used in search
+```
+
+## Special DocType types
+
+### Single DocTypes
+
+Single DocTypes have only one record (e.g., System Settings):
+
+```python
+meta = frappe.get_meta('System Settings')
+print(meta.issingle)  # True
+
+# Single DocTypes use the name of the DocType as the document name
+doc = frappe.get_doc('System Settings', 'System Settings')
+```
+
+### Child DocTypes (Table fields)
+
+Child DocTypes are used in table fields for one-to-many relationships:
+
+```python
+meta = frappe.get_meta('Sales Order Item')
+print(meta.istable)  # True
+
+# Access child tables through parent
+so = frappe.get_doc('Sales Order', 'SO-0001')
+for item in so.items:  # 'items' is a Table field
+    print(item.item_code, item.qty)
+```
+
+### Virtual DocTypes
+
+Virtual DocTypes don't have physical database tables and manage their own data:
+
+```python
+meta = frappe.get_meta('Virtual DocType')
+print(meta.is_virtual)  # True
+
+# Virtual DocTypes implement custom load_from_db() methods
+```
+
+## Naming and AutoName
+
+DocTypes define how documents are named:
+
+```python
+meta = frappe.get_meta('Sales Order')
+
+# AutoName options:
+# - 'field:fieldname' - Use a field value as name
+# - 'naming_series:' - Use a naming series (SO-.####)
+# - 'Prompt' - User enters the name
+# - 'autoname:EXPR' - Custom expression
+# - '[field]' - Use specific field
+print(meta.autoname)  # 'naming_series:'
+
+# Get naming series options
+series_options = meta.get_naming_series_options()
+# Returns: ['SO-.YYYY.-', 'SO-.####.-']
+```
+
+## Permissions
+
+DocTypes define role-based permissions:
+
+```python
+# Get permissions for a DocType
+permissions = meta.get_permissions()
+
+for perm in permissions:
+    print(f"Role: {perm.role}")
+    print(f"Read: {perm.read}")
+    print(f"Write: {perm.write}")
+    print(f"Create: {perm.create}")
+    print(f"Delete: {perm.delete}")
+    print(f"Submit: {perm.submit}")
+    print(f"Cancel: {perm.cancel}")
+```
+
+## Customization
+
+DocTypes can be customized without modifying the original definition:
+
+<CodeGroup>
+  ```python Custom Fields
+  # Add custom fields via "Customize Form" or programmatically
+  custom_field = frappe.get_doc({
+      'doctype': 'Custom Field',
+      'dt': 'User',
+      'fieldname': 'employee_id',
+      'label': 'Employee ID',
+      'fieldtype': 'Data',
+      'insert_after': 'full_name'
+  })
+  custom_field.insert()
+  
+  # Custom fields are automatically included in meta
+  meta = frappe.get_meta('User')
+  custom_fields = meta.get_custom_fields()
+  ```
+
+  ```python Property Setters
+  # Modify DocType/Field properties
+  from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+  
+  make_property_setter(
+      'User',           # DocType
+      'email',          # Field
+      'read_only',      # Property
+      1,                # Value
+      'Check'           # Property type
+  )
+  ```
+</CodeGroup>
+
+## Working with DocTypes
+
+### Creating a new DocType programmatically
+
+```python
+# Create a new DocType
+doctype = frappe.get_doc({
+    'doctype': 'DocType',
+    'name': 'My Custom DocType',
+    'module': 'Custom',
+    'custom': 1,
+    'fields': [
+        {
+            'fieldname': 'title',
+            'label': 'Title',
+            'fieldtype': 'Data',
+            'reqd': 1
+        },
+        {
+            'fieldname': 'description',
+            'label': 'Description',
+            'fieldtype': 'Text'
+        }
+    ],
+    'permissions': [
+        {
+            'role': 'System Manager',
+            'read': 1,
+            'write': 1,
+            'create': 1,
+            'delete': 1
+        }
+    ]
+})
+doctype.insert()
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Cache DocType metadata">
+    DocType metadata is automatically cached. Always use `frappe.get_meta()` instead of loading DocType documents directly:
+    
+    ```python
+    # Good: Uses cache
+    meta = frappe.get_meta('User')
+    
+    # Bad: Loads from database every time
+    meta = frappe.get_doc('DocType', 'User')
+    ```
+  </Accordion>
+
+  <Accordion title="Use field helpers">
+    Use Meta methods to check fields instead of direct property access:
+    
+    ```python
+    # Good
+    if meta.has_field('status'):
+        status = doc.status
+    
+    # Less safe
+    if 'status' in doc.__dict__:
+        status = doc.status
+    ```
+  </Accordion>
+
+  <Accordion title="Respect field properties">
+    Always check field properties before setting values:
+    
+    ```python
+    field = meta.get_field('status')
+    if not field.get('read_only'):
+        doc.status = 'Active'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Document class" icon="file" href="./document">
+    Learn about Document instances and lifecycle
+  </Card>
+  <Card title="Forms" icon="window" href="./forms">
+    Understand form rendering and customization
+  </Card>
+  <Card title="Permissions" icon="shield" href="./permissions">
+    Deep dive into the permission system
+  </Card>
+  <Card title="Database layer" icon="database" href="./database">
+    Explore database abstraction and queries
+  </Card>
+</CardGroup>

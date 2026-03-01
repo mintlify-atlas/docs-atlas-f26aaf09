@@ -1,0 +1,334 @@
+---
+title: Creating and managing DocTypes
+description: Build data models with Frappe DocTypes
+---
+
+DocTypes are the core data models in Frappe. They define database tables, forms, permissions, and business logic.
+
+## Creating a DocType
+
+You can create DocTypes through the UI or programmatically.
+
+### Using the UI
+
+<Steps>
+  <Step title="Navigate to DocType List">
+    Go to **Developer** > **DocType** > **New**
+  </Step>
+
+  <Step title="Configure basic properties">
+    - **Name**: PascalCase name (e.g., "Sales Invoice")
+    - **Module**: Select the module (e.g., "Accounts")
+    - **Is Submittable**: Enable if documents need workflow approval
+    - **Is Child Table**: Enable if this DocType will be used as a child table
+    - **Naming**: Configure how documents are named
+  </Step>
+
+  <Step title="Add fields">
+    Click **Add Row** in the Fields table and configure:
+    - **Label**: Human-readable field name
+    - **Type**: Data type (Data, Link, Select, Date, etc.)
+    - **Field Name**: Auto-generated from label (snake_case)
+    - **Options**: Required for Link and Select fields
+    - **Mandatory**: Make field required
+    - **Read Only**: Prevent editing
+  </Step>
+
+  <Step title="Configure permissions">
+    Add role permissions in the **Permissions** section
+  </Step>
+
+  <Step title="Save">
+    Click **Save** to create the DocType and database table
+  </Step>
+</Steps>
+
+### Using code
+
+Create DocType definitions programmatically:
+
+```python
+import frappe
+
+def create_custom_doctype():
+    if not frappe.db.exists("DocType", "Customer Feedback"):
+        doc = frappe.get_doc({
+            "doctype": "DocType",
+            "name": "Customer Feedback",
+            "module": "CRM",
+            "custom": 1,
+            "fields": [
+                {
+                    "label": "Customer",
+                    "fieldname": "customer",
+                    "fieldtype": "Link",
+                    "options": "Customer",
+                    "reqd": 1
+                },
+                {
+                    "label": "Rating",
+                    "fieldname": "rating",
+                    "fieldtype": "Select",
+                    "options": "1\n2\n3\n4\n5",
+                    "reqd": 1
+                },
+                {
+                    "label": "Comments",
+                    "fieldname": "comments",
+                    "fieldtype": "Text"
+                }
+            ],
+            "permissions": [
+                {
+                    "role": "System Manager",
+                    "read": 1,
+                    "write": 1,
+                    "create": 1,
+                    "delete": 1
+                }
+            ]
+        })
+        doc.insert()
+```
+
+## DocType structure
+
+Each DocType consists of several files:
+
+```
+invoice/
+├── __init__.py
+├── invoice.json          # DocType definition
+├── invoice.py            # Controller (Python)
+├── invoice.js            # Form script (JavaScript)
+├── invoice_list.js       # List view customization
+├── invoice_calendar.js   # Calendar view
+├── invoice_tree.js       # Tree view
+└── test_invoice.py       # Unit tests
+```
+
+### invoice.json
+
+Stores the DocType schema:
+
+```json
+{
+  "name": "Invoice",
+  "module": "Accounts",
+  "is_submittable": 1,
+  "fields": [
+    {
+      "fieldname": "customer",
+      "label": "Customer",
+      "fieldtype": "Link",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "fieldname": "items",
+      "label": "Items",
+      "fieldtype": "Table",
+      "options": "Invoice Item"
+    }
+  ]
+}
+```
+
+### invoice.py (Controller)
+
+Defines business logic:
+
+```python
+import frappe
+from frappe.model.document import Document
+
+class Invoice(Document):
+    def validate(self):
+        """Called before saving"""
+        self.calculate_total()
+    
+    def on_submit(self):
+        """Called when document is submitted"""
+        self.update_customer_balance()
+    
+    def on_cancel(self):
+        """Called when document is cancelled"""
+        self.reverse_customer_balance()
+    
+    def calculate_total(self):
+        self.total = sum(item.amount for item in self.items)
+    
+    def update_customer_balance(self):
+        customer = frappe.get_doc("Customer", self.customer)
+        customer.outstanding_balance += self.total
+        customer.save()
+```
+
+### invoice.js (Form Script)
+
+Client-side form logic:
+
+```javascript
+frappe.ui.form.on('Invoice', {
+    refresh: function(frm) {
+        // Add custom button
+        if (frm.doc.docstatus === 1) {
+            frm.add_custom_button(__('Create Payment'), function() {
+                // Logic to create payment
+            });
+        }
+    },
+    
+    customer: function(frm) {
+        // Auto-fetch customer details
+        frappe.call({
+            method: 'frappe.client.get',
+            args: {
+                doctype: 'Customer',
+                name: frm.doc.customer
+            },
+            callback: function(r) {
+                if (r.message) {
+                    frm.set_value('customer_name', r.message.customer_name);
+                }
+            }
+        });
+    }
+});
+
+frappe.ui.form.on('Invoice Item', {
+    qty: function(frm, cdt, cdn) {
+        calculate_item_amount(frm, cdt, cdn);
+    },
+    
+    rate: function(frm, cdt, cdn) {
+        calculate_item_amount(frm, cdt, cdn);
+    }
+});
+
+function calculate_item_amount(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    row.amount = row.qty * row.rate;
+    frm.refresh_field('items');
+}
+```
+
+## Common field types
+
+| Field Type | Description | Example |
+|------------|-------------|--------|
+| `Data` | Single-line text | Name, Email |
+| `Text` | Multi-line text | Description, Comments |
+| `Link` | Reference to another DocType | Customer, Item |
+| `Select` | Dropdown with predefined options | Status, Priority |
+| `Int` | Integer number | Quantity |
+| `Float` | Decimal number | Price, Amount |
+| `Currency` | Money value | Total, Tax |
+| `Date` | Date picker | Invoice Date |
+| `Datetime` | Date and time | Created At |
+| `Check` | Boolean checkbox | Is Active |
+| `Table` | Child table | Invoice Items |
+| `Attach` | File upload | Document, Image |
+| `HTML` | Custom HTML content | Instructions |
+| `Markdown` | Markdown editor | Notes |
+
+## DocType controller methods
+
+Common lifecycle hooks:
+
+```python
+class MyDocType(Document):
+    def autoname(self):
+        """Set document name before inserting"""
+        pass
+    
+    def validate(self):
+        """Validate before saving"""
+        pass
+    
+    def before_save(self):
+        """Called before validate and save"""
+        pass
+    
+    def after_insert(self):
+        """Called after first save"""
+        pass
+    
+    def on_update(self):
+        """Called after every save"""
+        pass
+    
+    def on_submit(self):
+        """Called when document is submitted"""
+        pass
+    
+    def on_cancel(self):
+        """Called when document is cancelled"""
+        pass
+    
+    def on_trash(self):
+        """Called before deletion"""
+        pass
+    
+    def after_delete(self):
+        """Called after deletion"""
+        pass
+```
+
+## Child tables
+
+Create child DocTypes for table fields:
+
+<Steps>
+  <Step title="Create child DocType">
+    Create a new DocType with **Is Child Table** enabled
+  </Step>
+
+  <Step title="Add fields">
+    Add fields like a normal DocType
+  </Step>
+
+  <Step title="Reference in parent">
+    Add a **Table** field in the parent DocType with the child DocType as options
+  </Step>
+</Steps>
+
+Example:
+
+```python
+# Access child table items
+for item in invoice.items:
+    print(f"{item.item_name}: {item.qty} x {item.rate}")
+
+# Add new row
+invoice.append('items', {
+    'item_code': 'ITEM-001',
+    'qty': 5,
+    'rate': 100
+})
+invoice.save()
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Plan your DocType structure">
+    Think about relationships between DocTypes before creating them. Use Link fields to connect related data.
+  </Accordion>
+
+  <Accordion title="Use appropriate field types">
+    Choose the right field type for better validation and user experience.
+  </Accordion>
+
+  <Accordion title="Add validation in controller">
+    Implement business logic in the Python controller's `validate()` method.
+  </Accordion>
+
+  <Accordion title="Write unit tests">
+    Create test cases in `test_[doctype].py` to ensure your DocType works correctly.
+  </Accordion>
+
+  <Accordion title="Use naming series">
+    Configure naming series for automatic document naming (e.g., INV-####).
+  </Accordion>
+</AccordionGroup>

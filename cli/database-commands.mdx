@@ -1,0 +1,403 @@
+---
+title: Database commands
+description: Commands for database operations and maintenance
+---
+
+Database commands help you manage backups, restores, and database maintenance tasks.
+
+## Backup
+
+Create a backup of a site.
+
+```bash
+bench --site [sitename] backup
+```
+
+**Options:**
+- `--with-files` - Include public and private files in backup
+- `--include, --only, -i` - Specific DocTypes to backup (comma-separated)
+- `--exclude, -e` - DocTypes to exclude from backup (comma-separated)
+- `--backup-path` - Path for saving all backup files
+- `--backup-path-db` - Path for saving database file
+- `--backup-path-files` - Path for saving public files
+- `--backup-path-private-files` - Path for saving private files
+- `--backup-path-conf` - Path for saving config file
+- `--ignore-backup-conf` - Ignore excludes/includes from site config
+- `--verbose` - Verbose output
+- `--compress` - Compress private and public files
+- `--old-backup-metadata` - Use older backup metadata format
+
+**Examples:**
+```bash
+# Basic database backup
+$ bench --site mysite.local backup
+Backup for Site mysite.local has been successfully completed
+Database backup saved: /sites/mysite.local/private/backups/20260301_123045-mysite_local-database.sql.gz
+
+# Backup with files
+$ bench --site mysite.local backup --with-files
+
+# Backup specific DocTypes only
+$ bench --site mysite.local backup --include "Sales Order,Sales Invoice"
+
+# Backup to custom location
+$ bench --site mysite.local backup --backup-path /backups/mysite
+```
+
+<Note>
+If encryption is enabled in System Settings, backups will be automatically encrypted. Keep your encryption key safe!
+</Note>
+
+## Restore
+
+Restore a site from a backup.
+
+```bash
+bench --site [sitename] restore [sql-file-path]
+```
+
+**Options:**
+- `--db-root-username` - Root username for database
+- `--db-root-password` - Root password for database
+- `--db-name` - Database name for the site
+- `--admin-password` - Administrator password
+- `--install-app` - Install app(s) after restore (can be used multiple times)
+- `--with-public-files` - Path to public files tar file
+- `--with-private-files` - Path to private files tar file
+- `--force` - Ignore validations and downgrade warnings
+- `--encryption-key` - Backup encryption key
+
+**Examples:**
+```bash
+# Basic restore
+$ bench --site mysite.local restore /backups/20260301_123045-mysite_local-database.sql.gz
+
+# Restore with files
+$ bench --site mysite.local restore backup.sql.gz \
+  --with-public-files public-files.tar \
+  --with-private-files private-files.tar
+
+# Restore with custom admin password
+$ bench --site mysite.local restore backup.sql.gz \
+  --admin-password "NewPassword123"
+
+# Restore encrypted backup
+$ bench --site mysite.local restore encrypted-backup.sql.gz \
+  --encryption-key "your-encryption-key"
+```
+
+<Warning>
+Restoring will overwrite all existing data in the site. Make sure you have a backup of current data if needed.
+</Warning>
+
+## Partial restore
+
+Restore specific tables from a partial backup.
+
+```bash
+bench --site [sitename] partial-restore [sql-file-path]
+```
+
+**Options:**
+- `--verbose, -v` - Verbose output
+- `--encryption-key` - Backup encryption key
+
+**Example:**
+```bash
+$ bench --site mysite.local partial-restore partial-backup.sql.gz
+```
+
+Partial backups are created using specific DocTypes with the `--include` option during backup.
+
+## Database console
+
+Enter the database console for direct SQL access.
+
+```bash
+bench --site [sitename] db-console
+```
+
+**Database-specific commands:**
+
+### MariaDB console
+
+```bash
+bench --site [sitename] mariadb
+```
+
+### PostgreSQL console
+
+```bash
+bench --site [sitename] postgres
+```
+
+### SQLite console
+
+```bash
+bench --site [sitename] sqlite
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local mariadb
+MariaDB [_mysite_local]> SELECT name, email FROM tabUser LIMIT 5;
+```
+
+<Warning>
+Direct database access is powerful but dangerous. Always backup before running manual SQL commands.
+</Warning>
+
+## Database maintenance
+
+### Add database index
+
+Add a database index to improve query performance.
+
+```bash
+bench --site [sitename] add-database-index
+```
+
+**Options:**
+- `--doctype` - DocType to add index on
+- `--column` - Column(s) to index (can be used multiple times for multi-column index)
+
+**Example:**
+```bash
+# Single column index
+$ bench --site mysite.local add-database-index \
+  --doctype "Sales Order" --column "customer"
+
+# Multi-column index
+$ bench --site mysite.local add-database-index \
+  --doctype "Sales Order" --column "customer" --column "posting_date"
+```
+
+### Describe database table
+
+Get statistics about a database table.
+
+```bash
+bench --site [sitename] describe-database-table --doctype [doctype]
+```
+
+**Options:**
+- `--doctype` - DocType to describe (required)
+- `--column` - Fetch accurate cardinality for specific columns
+
+**Example:**
+```bash
+$ bench --site mysite.local describe-database-table --doctype "Sales Order"
+{
+  "name": "tabSales Order",
+  "rows": 15234,
+  "size": "5.2 MB",
+  "indexes": [...]
+}
+```
+
+### Transform database
+
+Change database table storage engine and row format.
+
+```bash
+bench --site [sitename] transform-database --table [table]
+```
+
+**Options:**
+- `--table` - Table name(s) (comma-separated) or "all"
+- `--engine` - Storage engine: `InnoDB` or `MyISAM`
+- `--row_format` - Row format: `DYNAMIC`, `COMPACT`, `REDUNDANT`, or `COMPRESSED`
+- `--failfast` - Exit on first failure
+
+**Example:**
+```bash
+# Convert all tables to DYNAMIC row format
+$ bench --site mysite.local transform-database \
+  --table all --row_format DYNAMIC
+
+# Convert specific table
+$ bench --site mysite.local transform-database \
+  --table "tabSales Order" --engine InnoDB --row_format DYNAMIC
+```
+
+### Trim database
+
+Remove database tables for deleted DocTypes.
+
+```bash
+bench --site [sitename] trim-database
+```
+
+**Options:**
+- `--dry-run` - Show what would be deleted without deleting
+- `--format, -f` - Output format: `json` or `text` (default: `text`)
+- `--no-backup` - Skip backup before trimming
+- `--yes, -y` - Skip confirmation prompt
+
+**Example:**
+```bash
+# See what would be deleted
+$ bench --site mysite.local trim-database --dry-run
+
+# Actually delete ghost tables
+$ bench --site mysite.local trim-database --yes
+```
+
+### Trim tables
+
+Remove columns from tables where fields are deleted from DocTypes.
+
+```bash
+bench --site [sitename] trim-tables
+```
+
+**Options:**
+- `--dry-run` - Show what would be deleted
+- `--format, -f` - Output format: `json` or `table` (default: `table`)
+- `--no-backup` - Skip backup
+
+**Example:**
+```bash
+$ bench --site mysite.local trim-tables --dry-run
+```
+
+### Clear log table
+
+Clear old records from log tables efficiently.
+
+```bash
+bench --site [sitename] clear-log-table --doctype [log_doctype]
+```
+
+**Options:**
+- `--doctype` - Log DocType to clear (required)
+- `--days` - Keep records for this many days
+- `--no-backup` - Skip backup
+
+**Example:**
+```bash
+# Clear Error Logs older than 30 days
+$ bench --site mysite.local clear-log-table \
+  --doctype "Error Log" --days 30
+```
+
+## Data import/export
+
+### Export CSV
+
+Export a DocType's data to CSV.
+
+```bash
+bench --site [sitename] export-csv [doctype] [path]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local export-csv "Customer" /tmp/customers.csv
+```
+
+### Export JSON
+
+Export DocType data to JSON.
+
+```bash
+bench --site [sitename] export-json [doctype] [path]
+```
+
+**Options:**
+- `--name` - Export only one document (use '-' for Singles)
+
+**Example:**
+```bash
+# Export all customers
+$ bench --site mysite.local export-json "Customer" /tmp/customers.json
+
+# Export single document
+$ bench --site mysite.local export-json "Customer" /tmp/customer.json \
+  --name "CUST-001"
+```
+
+### Export doc
+
+Export a single document to CSV (for fixtures).
+
+```bash
+bench --site [sitename] export-doc [doctype] [docname]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local export-doc "Custom Field" "Customer-custom_field"
+```
+
+### Export fixtures
+
+Export fixtures defined in app hooks.
+
+```bash
+bench --site [sitename] export-fixtures
+```
+
+**Options:**
+- `--app` - Export fixtures for specific app only
+
+**Example:**
+```bash
+$ bench --site mysite.local export-fixtures --app erpnext
+```
+
+### Import doc
+
+Import documents from JSON files.
+
+```bash
+bench --site [sitename] import-doc [path]
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local import-doc /tmp/custom_fields/
+```
+
+### Data import
+
+Bulk import data from CSV or XLSX files.
+
+```bash
+bench --site [sitename] data-import
+```
+
+**Options:**
+- `--file` - Path to import file (.csv or .xlsx) (required)
+- `--doctype` - DocType to import (required)
+- `--type` - Import type: `Insert` or `Update` (default: `Insert`)
+- `--submit-after-import` - Submit documents after import
+- `--mute-emails` - Don't send emails during import
+
+**Example:**
+```bash
+$ bench --site mysite.local data-import \
+  --file /tmp/customers.csv \
+  --doctype Customer \
+  --type Insert
+```
+
+### Bulk rename
+
+Rename multiple documents via CSV file.
+
+```bash
+bench --site [sitename] bulk-rename [doctype] [path]
+```
+
+**Example CSV format:**
+```csv
+Old Name,New Name
+CUST-001,CUSTOMER-001
+CUST-002,CUSTOMER-002
+```
+
+**Example:**
+```bash
+$ bench --site mysite.local bulk-rename "Customer" /tmp/rename.csv
+```
