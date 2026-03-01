@@ -1,0 +1,148 @@
+{
+  "projectType": "framework",
+  "projectName": "Frappe Framework",
+  "projectDescription": "Low code web framework for real world applications, in Python and JavaScript",
+  "theme": "aspen",
+  "primaryColor": "#0089FF",
+  "lightColor": "#79BFFF",
+  "darkColor": "#0067C2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/doctype",
+              "concepts/document",
+              "concepts/forms",
+              "concepts/permissions",
+              "concepts/database",
+              "concepts/hooks",
+              "concepts/routing"
+            ]
+          },
+          {
+            "group": "Building Apps",
+            "pages": [
+              "apps/creating-app",
+              "apps/structure",
+              "apps/doctypes",
+              "apps/customization",
+              "apps/hooks-reference"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/rest-api",
+              "features/authentication",
+              "features/email",
+              "features/printing",
+              "features/background-jobs",
+              "features/real-time",
+              "features/workflows",
+              "features/reports"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/production",
+              "deployment/docker",
+              "deployment/bench",
+              "deployment/configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Python API",
+            "pages": [
+              "api/database",
+              "api/document",
+              "api/query-builder",
+              "api/permissions",
+              "api/utils",
+              "api/session"
+            ]
+          },
+          {
+            "group": "JavaScript API",
+            "pages": [
+              "api/frappe-client",
+              "api/form-api",
+              "api/list-api",
+              "api/ui-components"
+            ]
+          },
+          {
+            "group": "REST API",
+            "pages": [
+              "api/rest/overview",
+              "api/rest/authentication",
+              "api/rest/resources",
+              "api/rest/methods"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/bench-commands",
+              "cli/site-commands",
+              "cli/database-commands",
+              "cli/development-commands"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full-stack web framework with Python and JavaScript",
+    "Metadata-driven DocType system for rapid development",
+    "Built-in admin interface with forms, lists, and reports",
+    "Role-based permissions and user management",
+    "Automatically generated REST API for all models",
+    "Background job processing with RQ",
+    "Real-time updates via Socket.IO",
+    "Email integration and workflow engine",
+    "Multi-tenant architecture with site management",
+    "Database abstraction supporting MariaDB and PostgreSQL"
+  ],
+  "publicApiSurface": [
+    "frappe.get_doc()",
+    "frappe.get_list()",
+    "frappe.db.get_value()",
+    "frappe.whitelist()",
+    "frappe.get_meta()",
+    "frappe.has_permission()",
+    "frappe.throw()",
+    "frappe.enqueue()",
+    "frappe.publish_realtime()",
+    "frappe.sendmail()",
+    "frappe.qb (Query Builder)",
+    "frappe.model.document.Document",
+    "bench new-app",
+    "bench new-site",
+    "bench migrate",
+    "REST API: /api/resource/{doctype}",
+    "REST API: /api/method/{dotted.path.to.method}",
+    "frappe.ui.form.*",
+    "frappe.ui.Dialog",
+    "frappe.call()"
+  ]
+}
